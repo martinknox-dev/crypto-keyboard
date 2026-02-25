@@ -1,78 +1,139 @@
 name: 🐛 Bug Report
-description: Create a report to help FlorisBoard improve
+description: Create a report to help Crypto Keyboard improve
 labels:
   - "bug"
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for your help in making FlorisBoard better!
-        Guide to a good bug-report:
-        • Please search existing bug/crash reports reports to avoid creating duplicates.
-        • Give your bug report a good name (no generics like "Error" or "Crash"), so others can easily identify the topic of your issue.
-        • Describe the bug in a short but concise way.
-        • If you have a screenshot or screen recording of the bug, link them at the end of this issue.
-        • Also make sure to fill out the environment information. This info is valuable when trying to fix your described bug.
+        Thank you for helping improve Crypto Keyboard!
+        
+        **Before submitting:**
+        • Search [existing issues](https://github.com/martinknox-dev/crypto-keyboard/issues) to avoid duplicates
+        • Make sure the bug isn't a FlorisBoard core issue (test on [FlorisBoard](https://github.com/florisboard/florisboard) if unsure)
+        • Give your report a descriptive title (not "Bug" or "Crash")
+        • Include screenshots or screen recordings if helpful
+        
+        **For security vulnerabilities:** Do NOT open a public issue. Email the maintainer directly (see SECURITY.md).
+
+  - type: dropdown
+    id: bug-type
+    attributes:
+      label: Bug Category
+      description: What area of the app is affected?
+      options:
+        - Encryption/Decryption
+        - Steganography (invisible encoding)
+        - Keyboard UI (Crypto mode)
+        - Key Management
+        - QR Code Exchange
+        - Exchange Mode (auto-decryption)
+        - Overlay Display
+        - Clipboard Features
+        - General Keyboard
+        - Other
+    validations:
+      required: true
+
   - type: textarea
     id: description
     attributes:
-      label: Short description
-      description: Describe the bug in a short but concise way.
+      label: Description
+      description: Describe the bug clearly and concisely.
+      placeholder: |
+        What happened?
+        What did you expect to happen?
     validations:
       required: true
+
   - type: textarea
     id: reproduce
     attributes:
-      label: Steps to reproduce
+      label: Steps to Reproduce
+      description: How can we reproduce this bug?
       value: |
         1. Go to '…'
-        2. Click on '…'
-        3. Scroll down to '…'
+        2. Tap on '…'
+        3. Type '…'
         4. See error
     validations:
       required: true
-  - type: input
-    id: florisversion
+
+  - type: textarea
+    id: expected
     attributes:
-      label: FlorisBoard Version
-      placeholder: e.g. 0.X.X
+      label: Expected Behavior
+      description: What should have happened instead?
+    validations:
+      required: false
+
+  - type: input
+    id: cryptoversion
+    attributes:
+      label: Crypto Keyboard Version
+      placeholder: e.g. 0.6.0-beta
     validations:
       required: true
+
   - type: dropdown
     id: installsource
     attributes:
       label: Install Source
       options:
-        - Google PlayStore
-        - F-Droid (F-Droid Main)
-        - F-Droid (IzzyOnDroid)
-        - GitHub
+        - GitHub Releases
+        - Built from source
     validations:
       required: true
+
   - type: input
     id: device
     attributes:
       label: Device
-      placeholder: e.g. OnePlus 7T
+      placeholder: e.g. Samsung Galaxy S21, Pixel 7
     validations:
       required: true
+
   - type: input
     id: androidversion
     attributes:
-      label: Android
-      placeholder: e.g. 10, Stock
+      label: Android Version
+      placeholder: e.g. Android 13, One UI 5.0
     validations:
       required: true
+
+  - type: dropdown
+    id: exchangemode
+    attributes:
+      label: Exchange Mode Status
+      description: Was Exchange Mode (Accessibility Service) enabled?
+      options:
+        - "Yes - Exchange Mode ON"
+        - "No - Exchange Mode OFF"
+        - "Not applicable"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Screenshots
+      description: |
+        Add crash logs, screenshots, or screen recordings if available.
+        For logs, use: `adb logcat -d > log.txt`
+      placeholder: Paste logs here or attach screenshots...
+    validations:
+      required: false
+
   - type: checkboxes
     id: checklist
     attributes:
       label: "Checklist"
       options:
-        - label: "I made sure that there are *no existing issues* - [open](https://github.com/florisboard/florisboard/issues) or [closed](https://github.com/florisboard/florisboard/issues?q=is%3Aissue+is%3Aclosed) - which I could contribute my information to."
+        - label: "I searched [existing issues](https://github.com/martinknox-dev/crypto-keyboard/issues?q=is%3Aissue) and this bug hasn't been reported."
           required: true
-        - label: "I have read and understood the [contribution guidelines](https://github.com/florisboard/florisboard/blob/main/CONTRIBUTING.md)."
+        - label: "I have read the [Contributing Guidelines](https://github.com/martinknox-dev/crypto-keyboard/blob/main/CONTRIBUTING.md)."
           required: true
-        - label: "I have read and understood the [AI policy](https://github.com/florisboard/florisboard/blob/main/AI_POLICY.md)."
+        - label: "This is NOT a security vulnerability (those should be reported privately)."
           required: true
-        - label: "I have taken the time to fill in all the required details. I understand that the bug report will be dismissed otherwise."
+        - label: "I have provided all required information."
           required: true

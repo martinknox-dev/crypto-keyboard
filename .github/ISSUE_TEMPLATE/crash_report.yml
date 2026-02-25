@@ -1,51 +1,126 @@
-name: 💥 Crash report
-description: Create a report with a generated crash log attached to help FlorisBoard improve
+name: 💥 Crash Report
+description: Report a crash with logs attached
 labels:
   - "bug"
+  - "crash"
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for your help in making FlorisBoard better!
-        Guide to a good crash-report:
-        • Please search existing bug/crash reports to avoid creating duplicates.
-        • Give your crash report a good name (no generics like "Error" or "Crash"), so others can easily identify the topic of your issue.
-        • Describe what you were doing what could've led to the crash and whether the crash is random or reproducible.
+        Thank you for reporting this crash!
+        
+        **Before submitting:**
+        • Search [existing issues](https://github.com/martinknox-dev/crypto-keyboard/issues) to avoid duplicates
+        • Include the crash log (the app should show a crash dialog — tap "Copy" to get the log)
+        • Describe what you were doing when the crash occurred
+        
+        **For security vulnerabilities:** Do NOT open a public issue. Email the maintainer directly (see SECURITY.md).
+
+  - type: dropdown
+    id: crash-area
+    attributes:
+      label: Crash Area
+      description: What were you doing when the crash occurred?
+      options:
+        - Encrypting a message
+        - Decrypting a message
+        - Toggling Crypto mode
+        - Using Exchange Mode (auto-decrypt)
+        - Managing keys
+        - Scanning QR code
+        - Generating QR code
+        - Switching keyboards
+        - Opening settings
+        - General typing
+        - App startup
+        - Other
+    validations:
+      required: true
+
   - type: textarea
     id: description
     attributes:
-      label: Short description
-      description: Describe the bug in a short but concise way.
+      label: Description
+      description: What were you doing when the crash happened?
+      placeholder: |
+        Describe the context of the crash.
+        Is it reproducible or random?
     validations:
       required: true
+
   - type: textarea
     id: reproduce
     attributes:
-      label: Steps to reproduce
+      label: Steps to Reproduce
+      description: If reproducible, how can we trigger this crash?
       value: |
         1. Go to '…'
-        2. Click on '…'
-        3. Scroll down to '…'
-        4. See crash
+        2. Tap on '…'
+        3. Type '…'
+        4. App crashes
     validations:
       required: true
+
   - type: textarea
     id: crashlog
     attributes:
-      label: Crash log
-      description: Paste the generated crash log below
+      label: Crash Log
+      description: |
+        Paste the crash log from the crash dialog here.
+        
+        The app should show a dialog when it crashes — tap "Copy to clipboard" and paste below.
+        
+        Alternatively, use: `adb logcat -d | grep -i "crypto\|fatal\|exception"`
+      render: shell
     validations:
       required: true
+
+  - type: input
+    id: cryptoversion
+    attributes:
+      label: Crypto Keyboard Version
+      placeholder: e.g. 0.6.0-beta
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      placeholder: e.g. Samsung Galaxy S21, Pixel 7
+    validations:
+      required: true
+
+  - type: input
+    id: androidversion
+    attributes:
+      label: Android Version
+      placeholder: e.g. Android 13
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Crash Frequency
+      options:
+        - Every time (100% reproducible)
+        - Often (more than 50%)
+        - Sometimes (less than 50%)
+        - Once (not reproducible)
+    validations:
+      required: true
+
   - type: checkboxes
     id: checklist
     attributes:
       label: "Checklist"
       options:
-        - label: "I made sure that there are *no existing issues* - [open](https://github.com/florisboard/florisboard/issues) or [closed](https://github.com/florisboard/florisboard/issues?q=is%3Aissue+is%3Aclosed) - which I could contribute my information to."
+        - label: "I searched [existing issues](https://github.com/martinknox-dev/crypto-keyboard/issues?q=is%3Aissue+label%3Acrash) and this crash hasn't been reported."
           required: true
-        - label: "I have read and understood the [contribution guidelines](https://github.com/florisboard/florisboard/blob/main/CONTRIBUTING.md)."
+        - label: "I have included the crash log."
           required: true
-        - label: "I have read and understood the [AI policy](https://github.com/florisboard/florisboard/blob/main/AI_POLICY.md)."
+        - label: "I have read the [Contributing Guidelines](https://github.com/martinknox-dev/crypto-keyboard/blob/main/CONTRIBUTING.md)."
           required: true
-        - label: "I have taken the time to fill in all the required details. I understand that the crash report will be dismissed otherwise."
+        - label: "This is NOT a security vulnerability (those should be reported privately)."
           required: true

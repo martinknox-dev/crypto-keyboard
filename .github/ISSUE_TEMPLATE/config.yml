@@ -1,8 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 💬 Matrix
-    url: https://matrix.to/#/#florisboard:matrix.org
-    about: General chat about FlorisBoard and quick Q/A
-  - name: ❓ Questions / Feedback
-    url: https://github.com/florisboard/florisboard/discussions/new/choose
-    about: Post your questions or feedback in the discussions panel
+  - name: ❓ Questions & Discussion
+    url: https://github.com/martinknox-dev/crypto-keyboard/discussions/new/choose
+    about: Ask questions, share ideas, or discuss features in the Discussions tab
+  - name: 🔒 Security Vulnerability
+    url: https://github.com/martinknox-dev/crypto-keyboard/blob/main/SECURITY.md
+    about: Report security vulnerabilities privately (DO NOT open public issues)
+  - name: 📖 Documentation
+    url: https://github.com/martinknox-dev/crypto-keyboard/blob/main/README.md
+    about: Read the documentation before opening an issue

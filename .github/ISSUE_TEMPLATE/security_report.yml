@@ -1,0 +1,55 @@
+name: 🔒 Security Issue (Non-Critical)
+description: Report a minor security concern (NOT for vulnerabilities!)
+labels:
+  - "security"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚠️ STOP — Is this a vulnerability?
+        
+        **For security VULNERABILITIES (exploitable bugs, crypto flaws, etc.):**
+        
+        **DO NOT** open a public issue!
+        
+        Email the maintainer directly: [YOUR_EMAIL]
+        
+        See [SECURITY.md](https://github.com/martinknox-dev/crypto-keyboard/blob/main/SECURITY.md) for responsible disclosure process.
+        
+        ---
+        
+        **This template is ONLY for:**
+        • Security documentation improvements
+        • Questions about security design
+        • Suggestions for security enhancements
+        • Non-exploitable security concerns
+
+  - type: dropdown
+    id: security-type
+    attributes:
+      label: Type of Security Issue
+      options:
+        - Security documentation improvement
+        - Question about security design
+        - Suggestion for security enhancement
+        - Minor security concern (non-exploitable)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe your security-related concern or suggestion.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: "Confirmation"
+      options:
+        - label: "This is NOT a vulnerability report. I understand vulnerabilities must be reported privately via email."
+          required: true
+        - label: "I have read [SECURITY.md](https://github.com/martinknox-dev/crypto-keyboard/blob/main/SECURITY.md)."
+          required: true

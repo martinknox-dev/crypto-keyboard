@@ -1,35 +1,104 @@
-name: ✨ Feature request
-description: Suggest an idea for this project
+name: ✨ Feature Request
+description: Suggest a new feature or improvement
 labels:
-  - "proposal"
+  - "enhancement"
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for your help in making FlorisBoard better!
+        Thank you for suggesting a feature!
+        
+        **Before submitting:**
+        • Search [existing feature requests](https://github.com/martinknox-dev/crypto-keyboard/issues?q=label%3Aenhancement) to avoid duplicates
+        • One feature per issue (makes tracking easier)
+        • Consider privacy implications — we don't add features that compromise security
+        
+        **Note:** Features requiring network access will NOT be implemented (privacy-first approach).
 
-        Guide to a good feature-request:
-        • Please search existing proposals to avoid creating duplicates.
-        • If you have multiple ideas which are not directly connected to other, file a new issue for each idea. This makes it easier to implement your proposals.
-        • Describe your idea in a short but concise way.
-        • If you have any examples, e.g. screenshots or other keyboards have the proposed feature implemented, feel free to post them after your description.
-  - type: textarea
-    id: feature
+  - type: dropdown
+    id: feature-category
     attributes:
-      label: Feature idea
-      description: Please explain your idea in a precise way.
+      label: Feature Category
+      description: What area does this feature relate to?
+      options:
+        - Encryption / Cryptography
+        - Steganography / Encoding
+        - Keyboard UI / UX
+        - Key Management
+        - QR Code Exchange
+        - Exchange Mode / Auto-decryption
+        - Cover Message Generation
+        - Platform Compatibility
+        - Security Enhancement
+        - Accessibility
+        - Documentation
+        - Other
     validations:
       required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Use Case
+      description: What problem does this feature solve? Why do you need it?
+      placeholder: |
+        Describe the problem or use case.
+        Example: "I'm always frustrated when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this feature to work?
+      placeholder: |
+        Describe your ideal solution.
+        Be as specific as possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered any alternative solutions or workarounds?
+      placeholder: Any other approaches you've thought about...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: privacy-impact
+    attributes:
+      label: Privacy Impact
+      description: Does this feature require any new permissions or data access?
+      options:
+        - No new permissions needed
+        - May need new permissions (explain below)
+        - Requires network access (likely won't be implemented)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or examples.
+      placeholder: Screenshots, links to similar features in other apps, etc.
+    validations:
+      required: false
+
   - type: checkboxes
     id: checklist
     attributes:
       label: "Checklist"
       options:
-        - label: "I made sure that there are *no existing issues* - [open](https://github.com/florisboard/florisboard/issues) or [closed](https://github.com/florisboard/florisboard/issues?q=is%3Aissue+is%3Aclosed) - which I could contribute my information to."
+        - label: "I searched [existing feature requests](https://github.com/martinknox-dev/crypto-keyboard/issues?q=label%3Aenhancement) and this hasn't been suggested."
           required: true
-        - label: "I have read and understood the [contribution guidelines](https://github.com/florisboard/florisboard/blob/main/CONTRIBUTING.md)."
+        - label: "I have read the [Contributing Guidelines](https://github.com/martinknox-dev/crypto-keyboard/blob/main/CONTRIBUTING.md)."
           required: true
-        - label: "I have read and understood the [AI policy](https://github.com/florisboard/florisboard/blob/main/AI_POLICY.md)."
+        - label: "I understand that features requiring network access will not be implemented."
           required: true
-        - label: "I have taken the time to fill in all the required details. I understand that the feature request will be dismissed otherwise."
+        - label: "I have provided clear details about the feature."
           required: true
