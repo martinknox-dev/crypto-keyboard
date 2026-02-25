@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crypto_accessibility_label">Crypto Keyboard Decoder</string>
+    <string name="crypto_accessibility_description">Scans screen for hidden encrypted messages and shows decrypted content in overlay bubbles. Required for the Exchange Mode feature.</string>
+    <string name="crypto_mode_label">Crypto Mode</string>
+    <string name="normal_mode_label">Normal Mode</string>
+    <string name="switch_keyboard">Switch Keyboard</string>
+    <string name="secret_message_hint">Secret message…</string>
+    <string name="cover_message_hint">Cover message (visible text)…</string>
+    <string name="send_encrypted">Send Encrypted</string>
+    <string name="no_key_selected">No key selected</string>
+    <string name="select_key">Select Key</string>
+    <string name="crypto_mode_active">🔒 Crypto Mode Active</string>
+    <string name="decrypted_label">🔓 Decrypted</string>
+</resources>
