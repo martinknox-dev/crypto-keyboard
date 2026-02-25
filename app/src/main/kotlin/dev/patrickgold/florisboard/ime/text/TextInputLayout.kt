@@ -58,6 +58,11 @@ fun TextInputLayout(
             .fillMaxWidth()
             .wrapContentHeight(),
     ) {
+
+        // Modified by MK - Added CryptoHook (2026)
+        // --- CRYPTO HOOK (1 line) ---
+        CryptoBarHook()
+
         Smartbar()
         if (state.isActionsOverflowVisible) {
             QuickActionsOverflowPanel()

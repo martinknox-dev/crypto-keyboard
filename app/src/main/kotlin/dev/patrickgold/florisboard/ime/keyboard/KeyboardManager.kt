@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2021-2025 The FlorisBoard Contributors
+ * Modifications by MK (2026)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,6 +81,10 @@ import org.florisboard.lib.android.showShortToastSync
 import org.florisboard.lib.android.systemService
 import org.florisboard.lib.kotlin.collectIn
 import org.florisboard.lib.kotlin.collectLatestIn
+
+
+// --- Modified by MK - CRYPTO HOOK IMPORT (2026) ---
+import dev.patrickgold.florisboard.ime.text.CryptoBarHook
 
 private val DoubleSpacePeriodMatcher = """([^.!?‽\s]\s)""".toRegex()
 
@@ -181,8 +186,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             val state = activeState.snapshot()
             val subtype = subtypeManager.activeSubtype
             val mode = state.keyboardMode
-            // We need to reset the snapshot input shift state for non-character layouts, because the shift mechanic
-            // only makes sense for the character layouts.
             if (mode != KeyboardMode.CHARACTERS) {
                 state.inputShiftState = InputShiftState.UNSHIFTED
             }
@@ -231,14 +234,18 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         nlpManager.suggest(subtypeManager.activeSubtype, content)
     }
 
-    /**
-     * @return If the language switch should be shown.
-     */
     fun shouldShowLanguageSwitch(): Boolean {
         return subtypeManager.subtypes.size > 1
     }
 
     fun executeSwipeAction(swipeAction: SwipeAction) {
+        // --- CRYPTO HOOK: Handle crypto toggle separately ---
+        if (swipeAction == SwipeAction.TOGGLE_CRYPTO_MODE) {
+            CryptoBarHook.toggleCryptoMode()
+            return
+        }
+        // --- END CRYPTO HOOK ---
+
         val keyData = when (swipeAction) {
             SwipeAction.CYCLE_TO_PREVIOUS_KEYBOARD_MODE -> when (activeState.keyboardMode) {
                 KeyboardMode.CHARACTERS -> TextKeyData.VIEW_NUMERIC_ADVANCED
@@ -295,12 +302,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         editorInstance.commitGesture(fixCase(word))
     }
 
-    /**
-     * Changes a word to the current case.
-     * eg if [KeyboardState.isUppercase] is true, abc -> ABC
-     *    if [caps]     is true, abc -> Abc
-     *    otherwise            , abc -> abc
-     */
     fun fixCase(word: String): String {
         return when(activeState.inputShiftState) {
             InputShiftState.CAPS_LOCK -> {
@@ -313,9 +314,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
-    /**
-     * Handles [KeyCode] arrow and move events, behaves differently depending on text selection.
-     */
     fun handleArrow(code: Int, count: Int = 1) = editorInstance.apply {
         val isShiftPressed = activeState.isManualSelectionMode || inputEventDispatcher.isPressed(KeyCode.SHIFT)
         val content = activeContent
@@ -380,9 +378,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
-    /**
-     * Handles a [KeyCode.CLIPBOARD_SELECT] event.
-     */
     private fun handleClipboardSelect() {
         val activeSelection = editorInstance.activeContent.selection
         activeState.isManualSelectionMode = if (activeSelection.isSelectionMode) {
@@ -410,13 +405,15 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
-    /**
-     * Handles a [KeyCode.DELETE] event.
-     */
     private fun handleBackwardDelete(unit: OperationUnit) {
         if (inputEventDispatcher.isPressed(KeyCode.SHIFT)) {
             return handleForwardDelete(unit)
         }
+        // --- CRYPTO HOOK: intercept delete when crypto field is active ---
+        if (CryptoBarHook.interceptDelete()) {
+            return
+        }
+        // --- END CRYPTO HOOK ---
         activeState.batchEdit {
             it.isManualSelectionMode = false
             it.isManualSelectionModeStart = false
@@ -426,9 +423,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         editorInstance.deleteBackwards(unit)
     }
 
-    /**
-     * Handles a [KeyCode.FORWARD_DELETE] event.
-     */
     private fun handleForwardDelete(unit: OperationUnit) {
         activeState.batchEdit {
             it.isManualSelectionMode = false
@@ -439,10 +433,21 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         editorInstance.deleteForwards(unit)
     }
 
-    /**
-     * Handles a [KeyCode.ENTER] event.
-     */
     private fun handleEnter() {
+        // --- CRYPTO HOOK: enter in crypto mode switches field ---
+        if (CryptoBarHook.isCryptoModeActive && CryptoBarHook._activeField.value != CryptoBarHook.CryptoField.NONE) {
+            when (CryptoBarHook._activeField.value) {
+                CryptoBarHook.CryptoField.SECRET -> {
+                    CryptoBarHook._activeField.value = CryptoBarHook.CryptoField.COVER
+                }
+                CryptoBarHook.CryptoField.COVER -> {
+                    CryptoBarHook._activeField.value = CryptoBarHook.CryptoField.NONE
+                }
+                else -> {}
+            }
+            return
+        }
+        // --- END CRYPTO HOOK ---
         val info = editorInstance.activeInfo
         val isShiftPressed = inputEventDispatcher.isPressed(KeyCode.SHIFT)
         if (editorInstance.tryPerformEnterCommitRaw()) {
@@ -465,10 +470,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
-    /**
-     * Handles a [KeyCode.LANGUAGE_SWITCH] event. Also handles if the language switch should cycle
-     * FlorisBoard internal or system-wide.
-     */
     private fun handleLanguageSwitch() {
         when (prefs.keyboard.utilityKeyAction.get()) {
             UtilityKeyAction.DYNAMIC_SWITCH_LANGUAGE_EMOJIS,
@@ -477,9 +478,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
-    /**
-     * Handles a [KeyCode.SHIFT] down event.
-     */
     private fun handleShiftDown(data: KeyData) {
         val prefs = prefs.keyboard.capitalizationBehavior
         when (prefs.get()) {
@@ -505,9 +503,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
-    /**
-     * Handles a [KeyCode.SHIFT] up event.
-     */
     private fun handleShiftUp(data: KeyData) {
         if (activeState.inputShiftState != InputShiftState.CAPS_LOCK && !inputEventDispatcher.isAnyPressed() &&
             !inputEventDispatcher.isUninterruptedEventSequence(data)) {
@@ -515,40 +510,34 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
-    /**
-     * Handles a [KeyCode.CAPS_LOCK] event.
-     */
     private fun handleCapsLock() {
         activeState.inputShiftState = InputShiftState.CAPS_LOCK
     }
 
-    /**
-     * Handles a [KeyCode.SHIFT] cancel event.
-     */
     private fun handleShiftCancel() {
         activeState.inputShiftState = InputShiftState.UNSHIFTED
     }
 
-    /**
-     * Handles a hardware [KeyEvent.KEYCODE_SPACE] event. Same as [handleSpace],
-     * but skips handling changing to characters keyboard and double space periods.
-     */
     fun handleHardwareKeyboardSpace() {
+        // --- CRYPTO HOOK: intercept space ---
+        if (CryptoBarHook.interceptCommitText(" ")) {
+            return
+        }
+        // --- END CRYPTO HOOK ---
         val candidate = nlpManager.getAutoCommitCandidate()
         candidate?.let { commitCandidate(it) }
-        // Skip handling changing to characters keyboard and double space periods
-        // TODO: this is whether we commit space after selecting candidate. Should be determined by SuggestionProvider
         if (!subtypeManager.activeSubtype.primaryLocale.supportsAutoSpace &&
                 candidate != null) { /* Do nothing */ } else {
             editorInstance.commitText(KeyCode.SPACE.toChar().toString())
         }
     }
 
-    /**
-     * Handles a [KeyCode.SPACE] event. Also handles the auto-correction of two space taps if
-     * enabled by the user.
-     */
     private fun handleSpace(data: KeyData) {
+        // --- CRYPTO HOOK: intercept space ---
+        if (CryptoBarHook.interceptCommitText(" ")) {
+            return
+        }
+        // --- END CRYPTO HOOK ---
         val candidate = nlpManager.getAutoCommitCandidate()
         candidate?.let { commitCandidate(it) }
         if (prefs.keyboard.spaceBarSwitchesToCharacters.get()) {
@@ -571,16 +560,12 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 }
             }
         }
-        // TODO: this is whether we commit space after selecting candidate. Should be determined by SuggestionProvider
         if (!subtypeManager.activeSubtype.primaryLocale.supportsAutoSpace &&
                 candidate != null) { /* Do nothing */ } else {
             editorInstance.commitText(KeyCode.SPACE.toChar().toString())
         }
     }
 
-    /**
-     * Handles a [KeyCode.TOGGLE_INCOGNITO_MODE] event.
-     */
     private suspend fun handleToggleIncognitoMode() {
         prefs.suggestion.forceIncognitoModeFromDynamic.set(!prefs.suggestion.forceIncognitoModeFromDynamic.get())
         val newState = !activeState.isIncognitoMode
@@ -601,9 +586,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         )
     }
 
-    /**
-     * Handles a [KeyCode.TOGGLE_AUTOCORRECT] event.
-     */
     private fun handleToggleAutocorrect() {
         lastToastReference.get()?.cancel()
         lastToastReference = WeakReference(
@@ -611,9 +593,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         )
     }
 
-    /**
-     * Handles a [KeyCode.KANA_SWITCHER] event
-     */
     private fun handleKanaSwitch() {
         activeState.batchEdit {
             it.isKanaKata = !it.isKanaKata
@@ -621,9 +600,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
-    /**
-     * Handles a [KeyCode.KANA_HIRA] event
-     */
     private fun handleKanaHira() {
         activeState.batchEdit {
             it.isKanaKata = false
@@ -631,9 +607,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
-    /**
-     * Handles a [KeyCode.KANA_KATA] event
-     */
     private fun handleKanaKata() {
         activeState.batchEdit {
             it.isKanaKata = true
@@ -641,9 +614,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
-    /**
-     * Handles a [KeyCode.KANA_HALF_KATA] event
-     */
     private fun handleKanaHalfKata() {
         activeState.batchEdit {
             it.isKanaKata = true
@@ -651,23 +621,14 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
-    /**
-     * Handles a [KeyCode.CHAR_WIDTH_SWITCHER] event
-     */
     private fun handleCharWidthSwitch() {
         activeState.isCharHalfWidth = !activeState.isCharHalfWidth
     }
 
-    /**
-     * Handles a [KeyCode.CHAR_WIDTH_SWITCHER] event
-     */
     private fun handleCharWidthFull() {
         activeState.isCharHalfWidth = false
     }
 
-    /**
-     * Handles a [KeyCode.CHAR_WIDTH_SWITCHER] event
-     */
     private fun handleCharWidthHalf() {
         activeState.isCharHalfWidth = true
     }
@@ -777,7 +738,12 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             else -> {
                 if (activeState.imeUiMode == ImeUiMode.MEDIA) {
                     nlpManager.getAutoCommitCandidate()?.let { commitCandidate(it) }
-                    editorInstance.commitText(data.asString(isForDisplay = false))
+                    // --- CRYPTO HOOK: intercept media mode text ---
+                    val mediaText = data.asString(isForDisplay = false)
+                    if (!CryptoBarHook.interceptCommitText(mediaText)) {
+                        editorInstance.commitText(mediaText)
+                    }
+                    // --- END CRYPTO HOOK ---
                     return@batchEdit
                 }
                 when (activeState.keyboardMode) {
@@ -788,23 +754,35 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                         KeyType.CHARACTER,
                         KeyType.NUMERIC -> {
                             val text = data.asString(isForDisplay = false)
-                            editorInstance.commitText(text)
+                            // --- CRYPTO HOOK: intercept numeric text ---
+                            if (!CryptoBarHook.interceptCommitText(text)) {
+                                editorInstance.commitText(text)
+                            }
+                            // --- END CRYPTO HOOK ---
                         }
                         else -> when (data.code) {
                             KeyCode.PHONE_PAUSE,
                             KeyCode.PHONE_WAIT -> {
                                 val text = data.asString(isForDisplay = false)
-                                editorInstance.commitText(text)
+                                if (!CryptoBarHook.interceptCommitText(text)) {
+                                    editorInstance.commitText(text)
+                                }
                             }
                         }
                     }
                     else -> when (data.type) {
-                        KeyType.CHARACTER, KeyType.NUMERIC ->{
+                        KeyType.CHARACTER, KeyType.NUMERIC -> {
                             val text = data.asString(isForDisplay = false)
-                            if (!UCharacter.isUAlphabetic(UCharacter.codePointAt(text, 0))) {
-                                nlpManager.getAutoCommitCandidate()?.let { commitCandidate(it) }
+                            // --- CRYPTO HOOK: intercept character text ---
+                            if (CryptoBarHook.interceptCommitText(text)) {
+                                // Text consumed by crypto bar
+                            } else {
+                                if (!UCharacter.isUAlphabetic(UCharacter.codePointAt(text, 0))) {
+                                    nlpManager.getAutoCommitCandidate()?.let { commitCandidate(it) }
+                                }
+                                editorInstance.commitChar(text)
                             }
-                            editorInstance.commitChar(text)
+                            // --- END CRYPTO HOOK ---
                         }
                         else -> {
                             flogError(LogTopic.KEY_EVENTS) { "Received unknown key: $data" }

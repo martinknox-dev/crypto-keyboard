@@ -909,8 +909,17 @@ private class TextKeyboardLayoutController(
                 }
                 else -> {
                     if (event.absUnitCountY < -6) {
-                        keyboardManager.executeSwipeAction(prefs.gestures.spaceBarSwipeUp.get())
-                        true
+
+                        // Modified by MK - Added CryptoHook (2026)
+                        // --- CRYPTO HOOK: spacebar swipe up toggles crypto mode ---
+                        if (dev.patrickgold.florisboard.ime.text.CryptoBarHook._isInitialized) {
+                            dev.patrickgold.florisboard.ime.text.CryptoBarHook.toggleCryptoMode()
+                            true
+                        } else {
+                            keyboardManager.executeSwipeAction(prefs.gestures.spaceBarSwipeUp.get())
+                            true
+                        }
+                        // --- END CRYPTO HOOK ---
                     } else {
                         false
                     }
