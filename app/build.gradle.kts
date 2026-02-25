@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2022-2025 The FlorisBoard Contributors
+ * Modifications by MK (2026)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,11 +87,22 @@ configure<ApplicationExtension> {
         }
     }
 
+    // --- Added Product Flavors for Crypto Keyboard ---
+    flavorDimensions += "brand"
+    productFlavors {
+        create("floris") {
+            dimension = "brand"
+            applicationId = "dev.patrickgold.florisboard"
+        }
+        create("crypto") {
+            dimension = "brand"
+            applicationId = "com.mkcreations.cryptokeyboard"
+        }
+    }
+    // -------------------------------------------------
+
     bundle {
         language {
-            // We disable language split because FlorisBoard does not use
-            // runtime Google Play Service APIs and thus cannot dynamically
-            // request to download the language resources for a specific locale.
             enableSplit = false
         }
     }
@@ -177,8 +189,6 @@ kover {
 dependencies {
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
-    // testImplementation(composeBom)
-    // androidTestImplementation(composeBom)
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.activity.ktx)
@@ -217,6 +227,11 @@ dependencies {
     implementation(projects.lib.kotlin)
     implementation(projects.lib.native)
     implementation(projects.lib.snygg)
+    
+    // Modified by MK - Added Encryption Dependencies (2026)
+
+    // --- ADDED SECURITY CRYPTO DEPENDENCY ---
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     testImplementation(libs.kotest.assertions.core)
     testImplementation(libs.kotest.property)
@@ -226,6 +241,15 @@ dependencies {
     testImplementation(libs.turbine)
     androidTestImplementation(libs.androidx.test.ext)
     androidTestImplementation(libs.androidx.test.espresso.core)
+
+    // QR Code generation
+    implementation("com.google.zxing:core:3.5.2")
+    // QR Code scanning (CameraX + ML Kit)
+    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    implementation("androidx.camera:camera-core:1.3.4")
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
 }
 
 fun getGitCommitHash(short: Boolean = false): Provider<String> {
