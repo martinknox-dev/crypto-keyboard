@@ -49,5 +49,7 @@ enum class SwipeAction {
     SWITCH_TO_MEDIA_CONTEXT,
     SWITCH_TO_PREV_KEYBOARD,
     TOGGLE_SMARTBAR_VISIBILITY,
+    // Modified by MK - Added CryptoMode toggle (2026)
+    TOGGLE_CRYPTO_MODE,
     UNDO;
 }
