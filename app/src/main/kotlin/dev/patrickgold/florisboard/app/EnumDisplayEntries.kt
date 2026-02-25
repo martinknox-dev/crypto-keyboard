@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2025 The FlorisBoard Contributors
+ * Modifications by MK (2026)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -647,6 +648,18 @@ private val ENUM_DISPLAY_ENTRIES = mapOf<Pair<KClass<*>, String>, @Composable ()
                 key = SwipeAction.TOGGLE_SMARTBAR_VISIBILITY,
                 label = stringRes(R.string.enum__swipe_action__toggle_smartbar_visibility),
             )
+            entry(
+                key = SwipeAction.TOGGLE_SMARTBAR_VISIBILITY,
+                label = stringRes(R.string.enum__swipe_action__toggle_smartbar_visibility),
+            )
+
+            // Modified by MK - Added CryptoHook toogle (2026)
+            // --- CRYPTO HOOK (1 entry) ---
+            entry(
+                key = SwipeAction.TOGGLE_CRYPTO_MODE,
+                label = stringRes(R.string.enum__swipe_action__toggle_crypto_mode),
+            )
+            // --- END CRYPTO HOOK ---
         }
     },
     SwipeAction::class to "deleteSwipe" to {

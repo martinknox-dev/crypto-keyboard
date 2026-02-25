@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2021-2025 The FlorisBoard Contributors
+ * Modifications by MK (2026)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,6 +81,10 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.reflect.KClass
 
+// Modified by MK - Added CryptoKeyboard import (2026)
+import com.mkcreations.cryptokeyboard.ui.CryptoSettingsScreen
+import com.mkcreations.cryptokeyboard.ui.KeyManagementScreen
+
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)
 annotation class Deeplink(val path: String)
@@ -151,6 +156,17 @@ object Routes {
         @Serializable
         @Deeplink("settings/typing")
         object Typing
+
+        // Modified by MK - Added CryptoRoutes (2026)
+        // --- NEW CRYPTO ROUTES ---
+        @Serializable
+        @Deeplink("settings/crypto")
+        object Crypto
+
+        @Serializable
+        @Deeplink("settings/crypto/key-management")
+        object KeyManagement
+        // -------------------------
 
         @Serializable
         @Deeplink("settings/dictionary")
@@ -301,6 +317,12 @@ object Routes {
             composableWithDeepLink(Settings.Smartbar::class) { SmartbarScreen() }
 
             composableWithDeepLink(Settings.Typing::class) { TypingScreen() }
+
+            // Modified by MK - Added CryptoComposables (2026)
+            // --- YOUR CUSTOM COMPOSABLES ---
+            composableWithDeepLink(Settings.Crypto::class) { CryptoSettingsScreen() }
+            composableWithDeepLink(Settings.KeyManagement::class) { KeyManagementScreen() }
+            // -------------------------------
 
             composableWithDeepLink(Settings.Dictionary::class) { DictionaryScreen() }
             composableWithDeepLink(Settings.UserDictionary::class) { navBackStack ->
