@@ -1,68 +1,204 @@
 # Roadmap
 
-This feature roadmap intents to provide transparency to what is planned to be added to FlorisBoard in the foreseeable future. Note that there are no ETAs for any version milestones down below, experience has shown these won't hold anyway.
+This document outlines development priorities for Crypto Keyboard.
 
-Each major milestone has associated alpha/beta releases, so if you are interested in previewing features quicker, keep an eye out! Each major 0.x release has also patch releases after the initial major release, which will be published on both the stable and preview tracks.
+**No ETAs** — Features ship when ready, not by deadlines.
 
-## 0.5 (currently in development)
+---
 
-> [!NOTE]
-> The milestone 0.5 was split, thus the word suggestions now come with version 0.6. The old version 0.6 has been moved down and is now 0.7. The time it takes to implement word suggestions will not change, but we can now release the new theme editor earlier, which would otherwise lie dormant.
+## Current: v0.6-beta
 
-- [x] Theme rework part II / Snygg v2
-  - [x] See https://github.com/florisboard/florisboard/pull/2855
-  - [x] Spaces in URI bug (See https://github.com/florisboard/florisboard/issues/2898)
-  - [x] Re-add time based theme switching (See https://github.com/florisboard/florisboard/pull/2977)
-- [x] Add support for any remaining new features introduced with Android 13 / 14
-- [x] Raise minimum required Android version from Android 7 (SDK level 24) to Android 8 (SDK level 26)
+**Status:** Core functionality complete, needs polish and testing
 
-## 0.6
+### What's Working ✅
 
-- [ ] Implement predictive text support / spell checking
-- [ ] Add new extension type: Language Pack
-    - Basically groups all locale-relevant data (predictive base model, emoji suggestion data, ...)
-      in a dynamically importable extension file
-- [ ] Proper physical keyboard support (See https://github.com/florisboard/florisboard/issues/1972)
-- [ ] Rework cache manager (See https://github.com/florisboard/florisboard/issues/2870)
+- AES-256-GCM encryption/decryption
+- Steganographic encoding (16 invisible characters)
+- Keyboard UI with crypto mode
+- Secret + cover message input
+- Auto-generated cover messages
+- Multi-key support with fingerprints
+- QR code key exchange
+- Accessibility Service screen scanning
+- Overlay decryption display
+- Decryption cache
+- PIN-protected key storage
+- Password-protected key export
+- Compatibility testing tool
+- Clipboard decryption
 
-## k3lp
+### In Progress 🚧
 
-> [!NOTE]
-> The development of k3lp is not tied to a florisboard version and takes place on [codeberg.org](https://codeberg.org/k3lp/k3lp) simultaneously.
+- UI polish and animations
+- Battery optimization for Exchange Mode
+- Error handling improvements
+- Documentation completion
 
-- [ ] New keyboard layout engine + file syntax based on the upcoming Unicode Keyboard v3 standard
-- [ ] Add Tablet mode / Optimizations for landscape input based on new keyboard layout engine
+---
 
-## 0.7+
+## v1.0 — Production Ready
 
-> [!NOTE]
-> From 0.6 onwards we plan to have more stable 0.X releases but with at most one large feature per release, thus having a much quicker iteration of new features on the stable track, which is a benefit for everyone involved.
+**Goal:** Stable release suitable for daily use
 
-- [ ] Add floating keyboard mode
-- [ ] New text processing logic
-- [ ] Complete rework of the Emoji panel
-  - [ ] Emoji search
-  - [ ] Fully scrollable emoji list (soft category borders)
-  - [ ] Side scrollable emoji list (swipe for next category)
-  - [ ] More granular theming options
-  - [ ] Layout customization (e.g. placement of category buttons)
-  - [ ] Maybe: consider upgrading to emoji2 for better unified system-wide emoji styles
-- [ ] Reimplementation of glide typing with the new layout engine and predictive text core
-- [ ] Prepare FlorisBoard repository and app store presence for public beta release on Google Play (will go live with stable 0.7)
-- [ ] Rework branding images and texts of FlorisBoard for the app stores
-- [ ] Focus on stability and experience improvements of the app and keyboard
-- [ ] Add support for new features introduced with Android 15 / 16
+### Must Have
 
-## Backlog / Planned (unassigned)
+- [ ] **Security audit** — Professional cryptographer review
+- [ ] **Platform verification**
+  - [ ] WhatsApp tested
+  - [ ] Telegram tested
+  - [ ] Signal tested
+  - [ ] SMS tested
+  - [ ] Discord tested
+- [ ] **Performance**
+  - [ ] < 5% battery impact in Exchange Mode
+  - [ ] < 100ms encryption time
+  - [ ] Smooth scrolling with overlays
+- [ ] **Reliability**
+  - [ ] Handle all edge cases gracefully
+  - [ ] No crashes in common workflows
+  - [ ] Proper error messages
+- [ ] **Documentation**
+  - [ ] Complete user guide
+  - [ ] Security documentation
+  - [ ] API reference
+  - [ ] Contribution guide
+- [ ] **Distribution**
+  - [ ] Signed APK releases
+  - [ ] F-Droid listing
+  - [ ] Installation guide
 
-**Features that MAY be added (even in versions mentioned above) or dismissed**
+### Should Have
 
-- Full on-board layout editor which allows users to create their own layouts without writing a JSON file
-- Voice-to-text with Mozilla's open-source voice service (or any other oss voice provider)
-- Text translation
-- Stickers/GIFs
-- Kaomoji panel implementation
-- Implementing additional layouts
-- Support for Tasker/Automate/MacroDroid plugins
-- Support for WearOS/Smartwatches
-- Handwriting
+- [ ] Panic button (quick wipe of all keys)
+- [ ] Key verification improvements (better fingerprint comparison)
+- [ ] Onboarding wizard for first-time setup
+- [ ] Settings UI (cache duration, auto-decrypt timeout)
+- [ ] Multi-language support
+
+### Nice to Have
+
+- [ ] Theme support (dark/light)
+- [ ] Key backup reminders
+- [ ] Usage statistics (local only)
+- [ ] Export logs for debugging
+
+---
+
+## v1.1 — Enhanced Security
+
+**Goal:** Advanced security features
+
+### Planned
+
+- [ ] **Perfect forward secrecy**
+  - Ephemeral session keys
+  - Key ratcheting
+  - Automatic key rotation
+
+- [ ] **Deniable encryption**
+  - Multiple valid plaintexts for same ciphertext
+  - Plausible deniability layer
+
+- [ ] **Anti-forensics**
+  - Secure memory wiping
+  - Minimal device traces
+  - Auto-delete after read
+
+- [ ] **Key management**
+  - Key expiration
+  - Automatic key rotation
+  - Key revocation
+
+### Research Required
+
+- [ ] Post-quantum encryption (hybrid classical + PQ)
+- [ ] Threshold encryption (multi-party key sharing)
+- [ ] Statistical steganography analysis resistance
+- [ ] Traffic analysis resistance
+
+---
+
+## v2.0 — Platform Expansion
+
+**Goal:** Beyond Android keyboard
+
+### Ideas (Long-term)
+
+- [ ] **iOS keyboard** — Port to Apple ecosystem
+- [ ] **Desktop app** — Encrypt files, documents
+- [ ] **Browser extension** — Web-based encryption
+- [ ] **Group messaging** — Shared keys for groups
+- [ ] **File encryption** — Hide files in images (steganography)
+- [ ] **Cross-platform sync** — Encrypted key backup (optional)
+
+---
+
+## Backlog
+
+**Features under consideration:**
+
+- Voice message encryption
+- Video encryption
+- End-to-end encrypted file sharing
+- Decentralized key distribution (DHT/blockchain)
+- Hardware security module support
+- Biometric authentication for keys
+- Self-destructing messages
+- Screenshot prevention
+- Watermarking for leak detection
+
+---
+
+## Out of Scope
+
+**Will NOT build:**
+
+- ❌ Cryptocurrency features (despite the name)
+- ❌ Cloud sync / centralized servers
+- ❌ Analytics or telemetry
+- ❌ In-app purchases
+- ❌ Ads
+- ❌ Proprietary messaging app
+
+**Why:** Privacy-first means local-only, open-source, and zero tracking.
+
+---
+
+## Community Input
+
+### How to Influence Priorities
+
+1. Open [feature requests](https://github.com/martinknox-dev/crypto-keyboard/issues/new)
+2. Vote with 👍 on existing issues
+3. Discuss in [GitHub Discussions](https://github.com/martinknox-dev/crypto-keyboard/discussions)
+4. Contribute code for features you want
+
+### Current Top Requests
+
+(Will be updated as community grows)
+
+---
+
+## Development Philosophy
+
+- **Security > Features** — Won't add features that compromise security
+- **Privacy > Convenience** — Local-only, even if it's harder
+- **Open > Closed** — Transparent development, auditable code
+- **Stable > Fast** — Ship when ready, not by deadlines
+
+---
+
+## Success Metrics
+
+For v1.0:
+
+- ✅ Zero known security vulnerabilities
+- ✅ Works on major messaging platforms
+- ✅ < 5% battery drain in Exchange Mode
+- ✅ Complete documentation
+
+---
+
+*Roadmap updated: January 2025*
+
+**Timeline:** Features ship when they're secure and tested, not by calendar dates.
