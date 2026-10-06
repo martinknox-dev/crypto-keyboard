@@ -149,12 +149,6 @@ configure<ApplicationExtension> {
         }
     }
 
-    aboutLibraries {
-        collect {
-            configPath = file("src/main/config")
-        }
-    }
-
     lint {
         baseline = file("lint.xml")
     }
@@ -166,6 +160,12 @@ configure<ApplicationExtension> {
         unitTests.all {
             it.useJUnitPlatform()
         }
+    }
+}
+
+aboutLibraries {
+    collect {
+        configPath = file("src/main/config")
     }
 }
 
