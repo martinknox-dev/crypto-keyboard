@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.R
+import dev.patrickgold.florisboard.app.CryptoSettingsAvailable
 import dev.patrickgold.florisboard.app.LocalNavController
 import dev.patrickgold.florisboard.app.Routes
 import dev.patrickgold.florisboard.lib.compose.FlorisScreen
@@ -104,12 +105,15 @@ fun HomeScreen() = FlorisScreen {
         
         // Modified by Martin Knox - Added CryptoSettings Button (2026)
         // --- CRYPTO BUTTON ---
-        Preference(
-            icon = Icons.Outlined.Lock,
-            title = "Crypto Engine",
-            summary = "Manage keys and steganography settings",
-            onClick = { navController.navigate(Routes.Settings.Crypto) }
-        )
+        // Only shown in flavors that ship CryptoBoard (see CryptoNavGraph.kt).
+        if (CryptoSettingsAvailable) {
+            Preference(
+                icon = Icons.Outlined.Lock,
+                title = "Crypto Engine",
+                summary = "Manage keys and steganography settings",
+                onClick = { navController.navigate(Routes.Settings.Crypto) }
+            )
+        }
         // ------------------------------
 
         Preference(

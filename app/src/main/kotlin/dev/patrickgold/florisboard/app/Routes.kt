@@ -81,10 +81,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.reflect.KClass
 
-// Modified by MK - Added CryptoKeyboard import (2026)
-import com.mkcreations.cryptokeyboard.ui.CryptoSettingsScreen
-import com.mkcreations.cryptokeyboard.ui.KeyManagementScreen
-
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)
 annotation class Deeplink(val path: String)
@@ -319,10 +315,9 @@ object Routes {
             composableWithDeepLink(Settings.Typing::class) { TypingScreen() }
 
             // Modified by MK - Added CryptoComposables (2026)
-            // --- YOUR CUSTOM COMPOSABLES ---
-            composableWithDeepLink(Settings.Crypto::class) { CryptoSettingsScreen() }
-            composableWithDeepLink(Settings.KeyManagement::class) { KeyManagementScreen() }
-            // -------------------------------
+            // Flavor-specific: implemented in src/crypto and src/floris so that
+            // main never compiles against flavor-only source sets.
+            addCryptoRoutes()
 
             composableWithDeepLink(Settings.Dictionary::class) { DictionaryScreen() }
             composableWithDeepLink(Settings.UserDictionary::class) { navBackStack ->
