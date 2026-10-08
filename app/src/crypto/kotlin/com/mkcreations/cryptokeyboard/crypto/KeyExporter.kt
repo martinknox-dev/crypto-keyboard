@@ -1,10 +1,10 @@
 package com.mkcreations.cryptokeyboard.crypto
 
-import android.util.Base64
 import com.mkcreations.cryptokeyboard.model.CipherKey
 import com.mkcreations.cryptokeyboard.model.CoverStyle
 import org.json.JSONObject
 import java.security.SecureRandom
+import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
@@ -16,10 +16,22 @@ import javax.crypto.spec.SecretKeySpec
  */
 object KeyExporter {
 
-    private const val PBKDF2_ITERATIONS = 100_000
+    /**
+     * OWASP-recommended iteration count for PBKDF2-HMAC-SHA256 (2023).
+     * Exports are files, so the user can tolerate the extra delay.
+     */
+    private const val PBKDF2_ITERATIONS = 600_000
+
+    /** Iteration count used by exports written before the hardening pass. */
+    private const val LEGACY_PBKDF2_ITERATIONS = 100_000
+
     private const val SALT_SIZE = 16
     private const val KEY_SIZE = 256
     private const val IV_SIZE = 12
+
+    // Sanity bounds for iteration counts read from imported files.
+    private const val MIN_ITERATIONS = 1
+    private const val MAX_ITERATIONS = 10_000_000
 
     /**
      * Exports a key to an encrypted JSON string
@@ -32,13 +44,13 @@ object KeyExporter {
             SecureRandom().nextBytes(salt)
 
             // Derive encryption key from password
-            val derivedKey = deriveKey(password, salt)
+            val derivedKey = deriveKey(password, salt, PBKDF2_ITERATIONS)
 
             // Prepare key data as JSON
             val keyData = JSONObject().apply {
                 put("id", key.id)
                 put("label", key.label)
-                put("keyBytes", Base64.encodeToString(key.keyBytes, Base64.NO_WRAP))
+                put("keyBytes", Base64.getEncoder().encodeToString(key.keyBytes))
                 put("createdAt", key.createdAt)
                 put("coverStyle", key.coverStyle.name)
             }
@@ -53,12 +65,14 @@ object KeyExporter {
             val encrypted = cipher.doFinal(keyData.toString().toByteArray(Charsets.UTF_8))
 
             // Build export JSON
+            // "iter" is stored so future format changes stay importable.
             val exportJson = JSONObject().apply {
                 put("version", 1)
                 put("type", "cipher_key_export")
-                put("salt", Base64.encodeToString(salt, Base64.NO_WRAP))
-                put("iv", Base64.encodeToString(iv, Base64.NO_WRAP))
-                put("data", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+                put("iter", PBKDF2_ITERATIONS)
+                put("salt", Base64.getEncoder().encodeToString(salt))
+                put("iv", Base64.getEncoder().encodeToString(iv))
+                put("data", Base64.getEncoder().encodeToString(encrypted))
             }
 
             exportJson.toString(2) // Pretty print
@@ -81,12 +95,21 @@ object KeyExporter {
             if (exportJson.optString("type") != "cipher_key_export") return null
 
             // Extract components
-            val salt = Base64.decode(exportJson.getString("salt"), Base64.NO_WRAP)
-            val iv = Base64.decode(exportJson.getString("iv"), Base64.NO_WRAP)
-            val encrypted = Base64.decode(exportJson.getString("data"), Base64.NO_WRAP)
+            val salt = Base64.getDecoder().decode(exportJson.getString("salt"))
+            val iv = Base64.getDecoder().decode(exportJson.getString("iv"))
+            val encrypted = Base64.getDecoder().decode(exportJson.getString("data"))
+
+            // Iteration count is stored per-file; default to the legacy value
+            // for exports written before the field existed.
+            val iterations = if (exportJson.has("iter")) {
+                exportJson.getInt("iter")
+            } else {
+                LEGACY_PBKDF2_ITERATIONS
+            }
+            if (iterations !in MIN_ITERATIONS..MAX_ITERATIONS) return null
 
             // Derive key from password
-            val derivedKey = deriveKey(password, salt)
+            val derivedKey = deriveKey(password, salt, iterations)
 
             // Decrypt
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -100,7 +123,7 @@ object KeyExporter {
             CipherKey(
                 id = keyData.getString("id"),
                 label = keyData.getString("label"),
-                keyBytes = Base64.decode(keyData.getString("keyBytes"), Base64.NO_WRAP),
+                keyBytes = Base64.getDecoder().decode(keyData.getString("keyBytes")),
                 createdAt = keyData.getLong("createdAt"),
                 lastUsedAt = 0,
                 coverStyle = try {
@@ -120,14 +143,19 @@ object KeyExporter {
     /**
      * Derives a 256-bit key from password using PBKDF2
      */
-    private fun deriveKey(password: String, salt: ByteArray): ByteArray {
+    private fun deriveKey(password: String, salt: ByteArray, iterations: Int): ByteArray {
         val spec = PBEKeySpec(
             password.toCharArray(),
             salt,
-            PBKDF2_ITERATIONS,
+            iterations,
             KEY_SIZE
         )
-        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        return factory.generateSecret(spec).encoded
+        try {
+            val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            return factory.generateSecret(spec).encoded
+        } finally {
+            // Wipe the password copy held by the key spec
+            spec.clearPassword()
+        }
     }
 }

@@ -132,6 +132,70 @@ class SettingsStore(context: Context) {
         prefs.edit().putLong("last_unlock_time", System.currentTimeMillis()).apply()
     }
 
+    // --- PIN Lockout (anti brute-force) ---
+
+    /**
+     * Records a failed PIN attempt and returns the timestamp until which the
+     * PIN entry should be locked out. Backoff is exponential: 5s, 10s, 20s…
+     * capped at 5 minutes.
+     */
+    fun recordPinFailure(): Long {
+        val attempts = prefs.getInt("pin_failed_attempts", 0) + 1
+        val shift = (attempts - 1).coerceIn(0, 6)
+        val delayMs = (5_000L shl shift).coerceAtMost(300_000L)
+        val lockoutUntil = System.currentTimeMillis() + delayMs
+        prefs.edit()
+            .putInt("pin_failed_attempts", attempts)
+            .putLong("pin_lockout_until", lockoutUntil)
+            .apply()
+        return lockoutUntil
+    }
+
+    fun resetPinFailures() {
+        prefs.edit()
+            .remove("pin_failed_attempts")
+            .remove("pin_lockout_until")
+            .apply()
+    }
+
+    fun isPinLockedOut(): Boolean = getPinLockoutRemainingMs() > 0
+
+    fun getPinLockoutRemainingMs(): Long {
+        val until = prefs.getLong("pin_lockout_until", 0)
+        return (until - System.currentTimeMillis()).coerceAtLeast(0)
+    }
+
+    /**
+     * Stores a new PIN hash and enables the app lock.
+     */
+    fun setPinHash(hash: String) {
+        val settings = loadSettings()
+        saveSettings(
+            settings.copy(
+                appLockEnabled = true,
+                lockMethod = LockMethod.PIN,
+                pinHash = hash
+            )
+        )
+        resetPinFailures()
+    }
+
+    /**
+     * Disables the app lock and wipes the stored PIN hash.
+     */
+    fun clearAppLock() {
+        val settings = loadSettings()
+        saveSettings(
+            settings.copy(
+                appLockEnabled = false,
+                lockMethod = LockMethod.NONE,
+                pinHash = ""
+            )
+        )
+        resetPinFailures()
+        prefs.edit().remove("last_unlock_time").apply()
+    }
+
     private inline fun <reified T : Enum<T>> enumValueOrDefault(key: String, default: T): T {
         val name = prefs.getString(key, null) ?: return default
         return try {

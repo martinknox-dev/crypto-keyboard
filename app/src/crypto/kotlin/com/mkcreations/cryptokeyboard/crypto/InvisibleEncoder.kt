@@ -13,6 +13,15 @@ package com.mkcreations.cryptokeyboard.crypto
  */
 object InvisibleEncoder {
 
+    /**
+     * Soft limit for the total encoded message length (visible cover +
+     * invisible payload + markers). Most messengers truncate or reject very
+     * long messages; some platforms (e.g. SMS in UCS-2 mode) have far lower
+     * per-segment limits, so treat this as a warning threshold, not a
+     * guarantee.
+     */
+    const val MAX_TOTAL_CHARS = 4000
+
     // 16 invisible Unicode characters — one per nibble value (0-15)
     private val INVISIBLE_CHARS = charArrayOf(
         '\u200B',   // 0  - Zero Width Space
@@ -46,18 +55,39 @@ object InvisibleEncoder {
     private val END_MARKER_STR = "\u2068\u2069\u2068\u2069"  // Reversed pattern
 
     /**
+     * Strips characters that would corrupt the stego payload from a cover
+     * message: the 16 encoding characters and the marker characters. Without
+     * this, a cover message containing e.g. a pasted zero-width space or a
+     * soft hyphen would silently corrupt the embedded data.
+     */
+    fun sanitizeCover(cover: String): String {
+        return cover.filter { it !in CHAR_TO_NIBBLE && it != '\u2068' && it != '\u2069' }
+    }
+
+    /**
+     * True if the text contains characters from the stego alphabet or the
+     * marker set (i.e. it cannot be used as a cover message verbatim).
+     */
+    fun containsStegoChars(text: String): Boolean {
+        return text.any { it in CHAR_TO_NIBBLE || it == '\u2068' || it == '\u2069' }
+    }
+
+    /**
      * Encodes encrypted bytes into invisible characters
      * and embeds them into a cover message.
+     *
+     * The cover message is sanitized first (see [sanitizeCover]).
      */
     fun embedInCover(encryptedData: ByteArray, coverMessage: String): String {
         try {
             val invisibleData = bytesToInvisible(encryptedData)
 
-            if (coverMessage.isEmpty()) {
+            val cleanCover = sanitizeCover(coverMessage)
+            if (cleanCover.isEmpty()) {
                 return SIGNATURE_STR + invisibleData + END_MARKER_STR
             }
 
-            val coverChars = coverMessage.toList()
+            val coverChars = cleanCover.toList()
             val result = StringBuilder()
             val invisibleChars = invisibleData.toList()
 
@@ -90,8 +120,8 @@ object InvisibleEncoder {
             return result.toString()
 
         } catch (e: Exception) {
-            // Fallback: just concatenate
-            return coverMessage + SIGNATURE_STR + bytesToInvisible(encryptedData) + END_MARKER_STR
+            // Fallback: just concatenate (sanitized cover)
+            return sanitizeCover(coverMessage) + SIGNATURE_STR + bytesToInvisible(encryptedData) + END_MARKER_STR
         }
     }
 
@@ -230,7 +260,7 @@ object InvisibleEncoder {
             estimatedEncryptedBytes = estimatedEncryptedSize,
             invisibleCharCount = invisibleCharCount,
             totalMessageLength = totalChars,
-            withinLimits = totalChars < 4000
+            withinLimits = totalChars < MAX_TOTAL_CHARS
         )
     }
 

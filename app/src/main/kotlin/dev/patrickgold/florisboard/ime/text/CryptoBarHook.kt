@@ -279,12 +279,26 @@ object CryptoBarHook {
             val successClass = Class.forName(
                 "com.mkcreations.cryptokeyboard.ime.CryptoInputManager\$DecryptionResult\$Success"
             )
-            if (successClass.isInstance(result)) {
-                DecryptedInfo(
-                    secretMessage = successClass.getMethod("getSecretMessage").invoke(result) as? String ?: "",
-                    keyLabel = successClass.getMethod("getKeyLabel").invoke(result) as? String ?: "?"
-                )
-            } else null
+            val replayedClass = Class.forName(
+                "com.mkcreations.cryptokeyboard.ime.CryptoInputManager\$DecryptionResult\$Replayed"
+            )
+            when {
+                successClass.isInstance(result) -> {
+                    DecryptedInfo(
+                        secretMessage = successClass.getMethod("getSecretMessage").invoke(result) as? String ?: "",
+                        keyLabel = successClass.getMethod("getKeyLabel").invoke(result) as? String ?: "?"
+                    )
+                }
+                replayedClass.isInstance(result) -> {
+                    // Flag possible replays instead of hiding the message
+                    DecryptedInfo(
+                        secretMessage = "⚠️ Possible replay — this exact message was already seen.\n\n" +
+                                (replayedClass.getMethod("getSecretMessage").invoke(result) as? String ?: ""),
+                        keyLabel = replayedClass.getMethod("getKeyLabel").invoke(result) as? String ?: "?"
+                    )
+                }
+                else -> null
+            }
         } catch (e: Exception) {
             Log.e(TAG, "doDecrypt failed", e)
             null
@@ -305,17 +319,11 @@ object CryptoBarHook {
         val ic = FlorisImeService.currentInputConnection() ?: return false
 
         try {
-            // Step 1: Clear any existing text in the input field
+            // Commit the encrypted text. We deliberately do NOT clear the
+            // input field first: silently deleting whatever the user had
+            // already typed is data loss. The encrypted message is appended;
+            // the user can delete their own text manually if they want.
             ic.beginBatchEdit()
-
-            // Select all existing text and delete it
-            val extracted = ic.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)
-            if (extracted != null && extracted.text != null && extracted.text.isNotEmpty()) {
-                ic.setSelection(0, extracted.text.length)
-                ic.commitText("", 1)
-            }
-
-            // Step 2: Commit the encrypted text
             ic.commitText(encrypted, 1)
             ic.endBatchEdit()
 

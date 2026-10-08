@@ -91,10 +91,11 @@ Works across **some messaging app**: Telegram, Arattai, etc.,
 
 **Key Management**
 - QR code key exchange (scan to add contacts)
-- PIN-protected key storage
+- App-lock PIN with brute-force lockout (protects key screens)
 - Password-protected backup/restore
-- 32-word recovery phrases
+- 33-word recovery phrases (32 words + checksum word — typos are detected)
 - Multiple keys for different contacts
+- Session replay detection (re-sent messages are flagged)
 
 **Additional Tools**
 - Clipboard decryption
@@ -131,14 +132,18 @@ adb install app/build/outputs/apk/debug/app-debug.apk
    - Open Crypto Keyboard app
    - Key Management → Create New Key
    - Set a label (e.g., "Alice", "Work Group")
-   - Back up your 32-word recovery phrase
+   - Back up your 33-word recovery phrase (32 words + 1 checksum word)
 
-3. **Exchange keys with contacts**
+3. **Optional: set an app-lock PIN**
+   - Crypto Engine → Security → App Lock
+   - Protects key management and crypto settings (lockout after failed attempts)
+
+4. **Exchange keys with contacts**
    - Show your QR code to contact
    - Scan their QR code
    - Verify fingerprint (compare first 8 characters)
 
-4. **Enable auto-decryption (optional)**
+5. **Enable auto-decryption (optional)**
    - Settings → Accessibility → Crypto Keyboard
    - Enable service
 
@@ -183,18 +188,22 @@ Message is encrypted, embedded, and sent automatically.
 
 | Component | Implementation |
 |-----------|----------------|
-| Encryption | AES-256-GCM |
+| Encryption | AES-256-GCM (header authenticated as AAD) |
 | Key size | 256 bits |
 | IV | 96 bits, random per message |
 | Authentication tag | 128 bits (GCM) |
-| PIN protection | SHA-256, 10k iterations |
-| Export encryption | PBKDF2-HMAC-SHA256, 100k iterations |
+| Key selector on wire | Keyed HMAC-SHA256 hint (no constant per-key identifier) |
+| Replay detection | Session-scoped (same ciphertext in a new message is flagged) |
+| PIN protection | PBKDF2-HMAC-SHA256, 600k iterations + lockout |
+| Export encryption | PBKDF2-HMAC-SHA256, 600k iterations |
 
 ### Message Format
 
 ```
-[1 byte version][4 bytes key fingerprint][12 bytes IV][N bytes ciphertext + tag]
+[1 byte version][4 bytes keyed key hint][12 bytes IV][N bytes ciphertext + tag]
 ```
+
+The header (version + key hint) is authenticated as GCM AAD, and the key hint is a keyed HMAC — not a constant fingerprint — so observers cannot cluster your messages by key. Legacy v1 messages (static fingerprint, no AAD) remain readable.
 
 ### Steganographic Encoding
 
@@ -211,9 +220,10 @@ Signature markers (`U+2069 U+2068 U+2069 U+2068`) delimit the payload.
 
 ✅ **Passive surveillance** — Messages look innocent  
 ✅ **Server-side inspection** — Encrypted content is unreadable  
-✅ **Message tampering** — GCM authentication detects modifications  
+✅ **Message tampering** — GCM authentication detects modifications (incl. header, via AAD)  
+✅ **Key-correlation analysis** — Keyed per-key hint on the wire, not a constant fingerprint  
 ✅ **Shoulder surfing** — Cover message is what's visible  
-✅ **Forensic analysis** — Keys are PIN-encrypted on device
+✅ **Casual forensics** — Keys in EncryptedSharedPreferences; key screens gated by app-lock PIN
 
 ### What This Doesn't Protect Against
 
@@ -221,7 +231,9 @@ Signature markers (`U+2069 U+2068 U+2069 U+2068`) delimit the payload.
 ❌ **Screen recording malware** — Can capture decrypted overlays  
 ❌ **Metadata** — Who you talk to, when, and frequency is visible  
 ❌ **Statistical analysis** — Sophisticated detection can identify steganography  
-❌ **Quantum attacks** — Not post-quantum resistant (yet)
+❌ **Quantum attacks** — Not post-quantum resistant (yet)  
+❌ **Replay (fully)** — Detection is session-scoped and heuristic, not cryptographic  
+❌ **Sender forgery** — Anyone with the key can forge messages (no signatures yet)
 
 ### Known Limitations
 
@@ -331,7 +343,7 @@ Different messaging platforms handle invisible characters differently. Use the b
 | SMS | ⚠️ Works with Copy-Paste |
 | Discord | ⚠️ Works with Copy-Paste |
 | Facebook Messenger | ⚠️ Works with Copy-Paste |
-| Arattai | ⚠️ Wroks but UI fixes needed for Overlay |
+| Arattai | ⚠️ Works but UI fixes needed for Overlay |
 
 ---
 
@@ -382,10 +394,10 @@ crypto-keyboard/
 ## 📚 Documentation
 
 - [Security Policy](SECURITY.md) — Threat model, audit status, responsible disclosure
+- [Security Review](docs/SECURITY-REVIEW.md) — Independent review of the crypto core: findings & fixes
 - [Contributing Guidelines](CONTRIBUTING.md) — How to contribute code
 - [Roadmap](ROADMAP.md) — Development plans
-- [Architecture](docs/ARCHITECTURE.md) — Technical deep dive
-- [API Reference](docs/API.md) — Developer documentation
+- [Architecture](docs/ARCHITECTURE.md) — Technical deep dive, wire format, data flow
 
 ---
 

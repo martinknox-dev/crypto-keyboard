@@ -9,7 +9,8 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.mkcreations.cryptokeyboard.model.CipherKey
 import com.mkcreations.cryptokeyboard.model.CoverStyle
 import org.json.JSONObject
-import android.util.Base64
+import java.security.MessageDigest
+import java.util.Base64
 
 /**
  * Handles QR code generation and parsing for key exchange.
@@ -84,12 +85,16 @@ object QrCodeHelper {
             val keyBase64 = json.getString("k")
             val fingerprint = json.getString("f")
 
-            val keyBytes = Base64.decode(keyBase64, Base64.NO_WRAP)
+            val keyBytes = Base64.getDecoder().decode(keyBase64)
             if (keyBytes.size != 32) return null
 
-            // Verify fingerprint matches
+            // Verify fingerprint matches (constant-time comparison)
             val computedFingerprint = KeyGenerator.fingerprint(keyBytes)
-            if (computedFingerprint != fingerprint) return null
+            if (!MessageDigest.isEqual(
+                    computedFingerprint.toByteArray(Charsets.UTF_8),
+                    fingerprint.toByteArray(Charsets.UTF_8)
+                )
+            ) return null
 
             CipherKey(
                 id = fingerprint,
@@ -126,7 +131,10 @@ object QrCodeHelper {
             put("v", QR_VERSION)
             put("t", QR_TYPE)
             put("l", key.label)
-            put("k", Base64.encodeToString(key.keyBytes, Base64.NO_WRAP))
+            // WARNING: the raw key is in this payload — anyone who scans the
+            // QR code can decrypt messages. Always verify the fingerprint
+            // out-of-band after scanning.
+            put("k", Base64.getEncoder().encodeToString(key.keyBytes))
             put("f", key.id)
         }
         return json.toString()

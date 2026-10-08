@@ -40,6 +40,10 @@ object ScreenScanner {
         if (results.size >= 15) return
 
         try {
+            // Never read (or overlay) password fields — scanning credentials
+            // would be a serious privacy violation even if we discard them.
+            if (node.isPassword) return
+
             val text = node.text?.toString()
             if (!text.isNullOrEmpty() && text.length > 8) {
                 if (InvisibleEncoder.containsHiddenData(text)) {
@@ -128,6 +132,9 @@ object ScreenScanner {
         if (depth > 10) return false
 
         try {
+            // Never scan password fields (see scanNode)
+            if (node.isPassword) return false
+
             val text = node.text?.toString()
             if (!text.isNullOrEmpty() && text.length > 8) {
                 if (InvisibleEncoder.containsHiddenData(text)) return true

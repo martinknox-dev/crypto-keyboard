@@ -155,6 +155,9 @@ fun KeyManagementScreen() = FlorisScreen {
     }
 
     content {
+        // Gate key management behind the app-lock PIN (if enabled) — this
+        // screen exposes recovery phrases, QR codes and key exports.
+        PinLockGate {
         if (isLoading) {
             Box(
                 modifier = Modifier
@@ -164,7 +167,7 @@ fun KeyManagementScreen() = FlorisScreen {
             ) {
                 CircularProgressIndicator()
             }
-            return@content
+            return@PinLockGate
         }
 
         val store = secureKeyStore
@@ -177,7 +180,7 @@ fun KeyManagementScreen() = FlorisScreen {
             ) {
                 Text("Failed to initialize secure storage.")
             }
-            return@content
+            return@PinLockGate
         }
 
         // --- TOP ACTION BUTTONS ---
@@ -223,7 +226,7 @@ fun KeyManagementScreen() = FlorisScreen {
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("From Phrase (32 words)") },
+                        text = { Text("From Phrase (33 words)") },
                         onClick = {
                             showImportDropdown = false
                             showImportPhraseDialog = true
@@ -531,9 +534,9 @@ fun KeyManagementScreen() = FlorisScreen {
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Numbered phrase grid
+                        // Numbered phrase grid (33 words: 32 key words + checksum)
                         Text(
-                            "Or share these 32 words:",
+                            "Or share these 33 words (the last one is a checksum):",
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp
                         )
@@ -545,8 +548,8 @@ fun KeyManagementScreen() = FlorisScreen {
                         }
 
                         // Display in 2 columns
-                        val leftColumn = phraseText.take(16)
-                        val rightColumn = phraseText.drop(16)
+                        val leftColumn = phraseText.take(17)
+                        val rightColumn = phraseText.drop(17)
 
                         Row(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.weight(1f)) {
@@ -592,7 +595,7 @@ fun KeyManagementScreen() = FlorisScreen {
                         OutlinedButton(
                             onClick = {
                                 val phraseString = data.phrases.joinToString(" ")
-                                val shareText = "🔑 Cipher Key: ${data.keyLabel}\n\n$phraseString\n\nPaste these 32 words in Crypto Keyboard → Import → Phrase"
+                                val shareText = "🔑 Cipher Key: ${data.keyLabel}\n\n$phraseString\n\nPaste these 33 words in Crypto Keyboard → Import → Phrase"
                                 val intent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, shareText)
@@ -639,7 +642,7 @@ fun KeyManagementScreen() = FlorisScreen {
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = "Paste the 32 words you received from the other person.",
+                            text = "Paste the 33 words you received from the other person (32 key words + 1 checksum word). Legacy 32-word phrases are still accepted.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -653,7 +656,7 @@ fun KeyManagementScreen() = FlorisScreen {
                         OutlinedTextField(
                             value = importPhraseText,
                             onValueChange = { importPhraseText = it },
-                            label = { Text("Paste 32 words here") },
+                            label = { Text("Paste 33 words here") },
                             minLines = 3,
                             maxLines = 6,
                             modifier = Modifier.fillMaxWidth()
@@ -671,23 +674,46 @@ fun KeyManagementScreen() = FlorisScreen {
                                         .map { it.lowercase().trim() }
                                         .filter { it.isNotEmpty() }
 
-                                    if (words.size != 32) {
-                                        Toast.makeText(
-                                            context,
-                                            "Expected 32 words, got ${words.size}. Check and try again.",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-                                        return@launch
+                                    val parseResult = KeyGenerator.parseWordPhrase(words)
+                                    val keyBytes = when (parseResult) {
+                                        is KeyGenerator.PhraseParseResult.Valid -> parseResult.keyBytes
+                                        is KeyGenerator.PhraseParseResult.ValidLegacyNoChecksum -> {
+                                            // Legacy 32-word phrase (no checksum) — accept
+                                            // it, but warn that typos can't be detected.
+                                            parseResult.keyBytes
+                                        }
+                                        is KeyGenerator.PhraseParseResult.InvalidChecksum -> {
+                                            Toast.makeText(
+                                                context,
+                                                "Checksum word doesn't match — a word is mistyped. Check and try again.",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            return@launch
+                                        }
+                                        is KeyGenerator.PhraseParseResult.InvalidWord -> {
+                                            Toast.makeText(
+                                                context,
+                                                "Invalid phrase — some words are not recognized.",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            return@launch
+                                        }
+                                        is KeyGenerator.PhraseParseResult.InvalidCount -> {
+                                            Toast.makeText(
+                                                context,
+                                                "Expected 33 words (or legacy 32), got ${words.size}. Check and try again.",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            return@launch
+                                        }
                                     }
 
-                                    val keyBytes = KeyGenerator.wordPhraseToKey(words)
-                                    if (keyBytes == null) {
+                                    if (parseResult is KeyGenerator.PhraseParseResult.ValidLegacyNoChecksum) {
                                         Toast.makeText(
                                             context,
-                                            "Invalid phrase — some words are not recognized.",
+                                            "Imported legacy 32-word phrase (no checksum). Consider re-exporting with a 33-word phrase.",
                                             Toast.LENGTH_LONG
                                         ).show()
-                                        return@launch
                                     }
 
                                     val fingerprintId = KeyGenerator.fingerprint(keyBytes)
@@ -971,14 +997,14 @@ fun KeyManagementScreen() = FlorisScreen {
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        Text("Recovery Phrase (32 words):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Recovery Phrase (33 words, incl. checksum):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
                         Spacer(modifier = Modifier.height(8.dp))
 
                         // Phrase grid
                         val phraseText = phrases.mapIndexed { index, word -> "${index + 1}. $word" }
-                        val leftColumn = phraseText.take(16)
-                        val rightColumn = phraseText.drop(16)
+                        val leftColumn = phraseText.take(17)
+                        val rightColumn = phraseText.drop(17)
 
                         Row(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.weight(1f)) {
@@ -1014,7 +1040,7 @@ fun KeyManagementScreen() = FlorisScreen {
                         OutlinedButton(
                             onClick = {
                                 val phraseString = phrases.joinToString(" ")
-                                val shareText = "🔑 Cipher Key: ${key.label}\n\n$phraseString\n\nPaste these 32 words in Crypto Keyboard → Import → Phrase"
+                                val shareText = "🔑 Cipher Key: ${key.label}\n\n$phraseString\n\nPaste these 33 words in Crypto Keyboard → Import → Phrase"
                                 val intent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, shareText)
@@ -1097,6 +1123,7 @@ fun KeyManagementScreen() = FlorisScreen {
                 }
             }
         }
+        } // PinLockGate
     }
 }
 

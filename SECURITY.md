@@ -54,12 +54,15 @@ When reporting a security issue, please provide:
 
 #### What This Protects Against ✅
 
-- **Passive surveillance** — Message content is encrypted
+- **Passive surveillance** — Message content is encrypted (AES-256-GCM)
 - **Server-side inspection** — Servers see only cover messages
-- **Message tampering** — GCM authentication detects modifications
-- **Replay attacks** — Random IV prevents replaying old messages
-- **Casual forensics** — Keys are PIN-encrypted on device
+- **Message tampering** — GCM authentication detects modifications (ciphertext *and* header, via AAD)
+- **Header tampering** — Version + key hint are GCM-authenticated (AAD, protocol v2)
+- **Key-correlation traffic analysis** — Wire format carries a keyed per-key HMAC hint, not a constant fingerprint (protocol v2)
+- **Replay attacks (best effort)** — Session-scoped detection flags a ciphertext re-sent inside a different message
+- **Casual forensics** — Keys stored in EncryptedSharedPreferences; settings/key screens gated by an app-lock PIN with lockout
 - **Shoulder surfing** — Decrypted content hidden until Exchange Mode active
+- **Password-field leakage** — The screen scanner never reads password fields
 
 #### What This Does NOT Protect Against ❌
 
@@ -92,25 +95,31 @@ If any assumption is violated, security guarantees are void.
 
 | Component | Algorithm | Parameters |
 |-----------|-----------|------------|
-| **Symmetric encryption** | AES-256-GCM | 256-bit key, 96-bit IV, 128-bit tag |
+| **Symmetric encryption** | AES-256-GCM | 256-bit key, 96-bit IV, 128-bit tag, header as AAD |
 | **Key generation** | SecureRandom | 256 bits |
-| **Key fingerprinting** | SHA-256 | First 4 bytes (32 bits) |
-| **PIN hashing** | SHA-256 | 10,000 iterations, random 16-byte salt |
-| **Export encryption** | PBKDF2-HMAC-SHA256 | 100,000 iterations, random 16-byte salt |
+| **Key fingerprinting** (local id / QR only) | SHA-256 | First 4 bytes (32 bits) |
+| **Key hint** (on the wire, protocol v2) | HMAC-SHA256(key, label) | First 4 bytes (32 bits) |
+| **PIN hashing** | PBKDF2-HMAC-SHA256 | 600,000 iterations, random 16-byte salt (OWASP 2023) |
+| **Export encryption** | PBKDF2-HMAC-SHA256 | 600,000 iterations (stored per file), random 16-byte salt |
 
 ### Message Format
 
+**Protocol v2 (current):**
+
 ```
-┌────────┬─────────────┬──────┬─────────────────────────┐
-│Version │ Fingerprint │  IV  │ Ciphertext + Auth Tag   │
-│ 1 byte │   4 bytes   │12 by │     Variable length     │
-└────────┴─────────────┴──────┴─────────────────────────┘
+┌────────┬───────────┬──────┬─────────────────────────┐
+│Version │  Key hint │  IV  │ Ciphertext + Auth Tag   │
+│ 1 byte │  4 bytes  │12 B  │     Variable length     │
+└────────┴───────────┴──────┴─────────────────────────┘
 ```
 
-**Version (1 byte):** Protocol version (currently `0x01`)  
-**Fingerprint (4 bytes):** First 4 bytes of SHA-256(key) — identifies which key to use  
+**Version (1 byte):** `0x02` = current. `0x01` = legacy (still accepted on decrypt).  
+**Key hint (4 bytes):** First 4 bytes of `HMAC-SHA256(key, "CryptoKeyboard/key-hint/v2")` — identifies which key to use *without* exposing a constant per-key identifier to observers. The receiver recomputes the hint for each of its own keys and matches in constant time.  
 **IV (12 bytes):** Random initialization vector (96 bits for GCM)  
-**Ciphertext + Tag:** AES-GCM output (plaintext + 16-byte authentication tag)
+**Ciphertext + Tag:** AES-GCM output (plaintext + 16-byte authentication tag)  
+**AAD:** The 5 header bytes (version ‖ key hint) are passed as GCM additional authenticated data — tampering with either is detected at decryption.
+
+**Protocol v1 (legacy, decrypt-only):** `[0x01][static fingerprint 4B][IV 12B][ciphertext+tag]`, no AAD. The static fingerprint allowed observers to cluster all messages using the same key; v1 remains readable for backward compatibility but is never produced anymore.
 
 ### Steganographic Encoding
 
@@ -162,28 +171,30 @@ These are NOT used in the encoding alphabet, so they uniquely delimit payloads.
 
 ### Key Storage
 
-#### Android Keystore
+#### EncryptedSharedPreferences
 
-Keys are stored using Android Keystore when available:
+Keys are stored using Android's `EncryptedSharedPreferences` (`androidx.security:security-crypto`):
 
-- Hardware-backed on devices with TEE/Secure Enclave
-- Software-backed on older devices
-- Encrypted with user's PIN-derived key
-- Stored in `/data/data/[package]/files/keys/` (app-private storage)
+- Keys and values encrypted with AES-256-GCM; preference names with AES-256-SIV
+- Master key is hardware-backed (TEE/StrongBox) on devices that support it, software-backed otherwise
+- Stored in app-private storage — not readable by other apps
 
-#### PIN Protection
+#### App-Lock PIN (UI gate)
 
-User PINs protect keys using:
+An optional app-lock PIN gates the key-management and crypto-settings screens:
 
 ```
+stored = "v2:" || base64(salt) || ":" || base64(hash) || ":" || iterations
 salt = random(16 bytes)
-iterations = 10,000
-derived_key = SHA256^iterations(PIN + salt)
-encrypted_key = AES-256-GCM(key_bytes, derived_key)
-stored = salt || encrypted_key
+iterations = 600,000 (PBKDF2-HMAC-SHA256, OWASP 2023)
+hash = PBKDF2(PIN, salt, iterations, 256 bits)
+verification = constant-time compare
+lockout = exponential backoff after failures (5s doubling, capped at 5 min)
 ```
 
-**Why 10k iterations:** Balance between security and UX (instant unlock feel)
+**Important boundary:** the PIN gates the *settings UI*. The IME and accessibility services must keep keys usable in the background for auto-decryption to work, so the PIN does not (and cannot) gate those paths. At-rest protection is `EncryptedSharedPreferences`; the PIN protects against someone who gets the unlocked device and opens the app.
+
+Legacy PIN hashes (10k-round SHA-256) still verify so existing installs keep working, and are transparently re-hashed to PBKDF2 on next successful unlock.
 
 #### Export/Import
 
@@ -191,12 +202,12 @@ Exported keys use stronger derivation:
 
 ```
 salt = random(16 bytes)
-iterations = 100,000
+iterations = 600,000 (PBKDF2-HMAC-SHA256, OWASP 2023; stored per file as "iter")
 derived_key = PBKDF2-HMAC-SHA256(password, salt, iterations)
 encrypted_export = AES-256-GCM(key_data, derived_key)
 ```
 
-**Why 100k iterations:** Exports are files (user can tolerate delay), so more iterations feasible
+**Why 600k iterations:** Exports are files (user can tolerate delay), so more iterations feasible. The iteration count is stored in the export file, so older exports (100k, no `iter` field) remain importable.
 
 ---
 
@@ -216,8 +227,14 @@ encrypted_export = AES-256-GCM(key_data, derived_key)
 
 3. **No sender authentication**
    - GCM authenticates ciphertext integrity, not sender identity
-   - Relies on key fingerprint verification out-of-band
+   - Anyone holding the key can forge messages from the other party
+   - Mitigation: verify key fingerprints out-of-band after exchange
    - Future: Add digital signatures
+
+4. **Replay protection is heuristic, not cryptographic**
+   - A random IV prevents pattern analysis, *not* replay — GCM accepts verbatim re-sends
+   - Mitigation: `ReplayGuard` flags a ciphertext that re-appears inside a *different* message (session-scoped, bounded)
+   - Future: sequence numbers / timestamps inside the authenticated plaintext + receiver state
 
 ### Steganographic Limitations
 
@@ -272,6 +289,8 @@ This project has NOT undergone professional security audit by cryptographers.
 ### What Has Been Reviewed
 
 - ✅ Code review by contributors
+- ✅ Independent security review of the crypto core (2026-10, see [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md)) — 18 findings, 17 fixed/documented
+- ✅ Unit test suite for the cryptographic core (~60 tests, `testCryptoDebugUnitTest` in CI)
 - ✅ Automated security scanning (GitHub CodeQL)
 - ✅ Dependency vulnerability scanning (Dependabot)
 - ❌ Professional cryptographic audit
@@ -477,6 +496,6 @@ This software may be subject to export control regulations in some countries.
 
 ---
 
-*Last updated: January 2025*
+*Last updated: October 2026*
 
 **Security is a process, not a product. Stay vigilant.**

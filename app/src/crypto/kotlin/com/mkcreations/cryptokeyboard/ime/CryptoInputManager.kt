@@ -94,6 +94,13 @@ class CryptoInputManager(private val context: Context) {
                     keyLabel = result.keyLabel
                 )
             }
+            is MessageProcessor.DecryptResult.Replayed -> {
+                DecryptionResult.Replayed(
+                    secretMessage = result.secretMessage,
+                    coverMessage = result.coverMessage,
+                    keyLabel = result.keyLabel
+                )
+            }
             is MessageProcessor.DecryptResult.NotEncrypted -> {
                 DecryptionResult.NotEncrypted
             }
@@ -173,6 +180,11 @@ class CryptoInputManager(private val context: Context) {
 
     sealed class DecryptionResult {
         data class Success(
+            val secretMessage: String,
+            val coverMessage: String,
+            val keyLabel: String
+        ) : DecryptionResult()
+        data class Replayed(
             val secretMessage: String,
             val coverMessage: String,
             val keyLabel: String

@@ -2,6 +2,8 @@ package com.mkcreations.cryptokeyboard.crypto
 
 import java.security.MessageDigest
 import java.security.SecureRandom
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 object KeyGenerator {
 
@@ -17,8 +19,13 @@ object KeyGenerator {
     }
 
     /**
-     * Creates a 4-byte fingerprint of a key for identification
-     * This is NOT the key — it's a hash used to identify which key to use
+     * Creates a 4-byte fingerprint of a key for identification.
+     * This is NOT the key — it's a hash used to identify which key to use.
+     *
+     * NOTE: The fingerprint is a *static* identifier. It is used for local key
+     * storage and QR exchange, but it is no longer placed on the wire (see
+     * [keyHint]) because a constant per-key identifier lets an observer
+     * correlate all messages that use the same key.
      */
     fun fingerprint(keyBytes: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -27,34 +34,119 @@ object KeyGenerator {
         return hash.take(4).joinToString("") { "%02x".format(it) }
     }
 
+    // Domain-separation label for the keyed key hint (protocol v2).
+    private const val KEY_HINT_LABEL = "CryptoKeyboard/key-hint/v2"
+
     /**
-     * Converts key bytes to a human-readable word phrase (BIP39-style)
-     * for sharing between users
+     * Computes the 4-byte key hint for the v2 wire format.
+     *
+     * Unlike the static [fingerprint], the hint is a keyed HMAC truncated to
+     * 4 bytes. An observer cannot precompute hints or correlate messages by a
+     * constant identifier without knowing the key. The receiver recomputes
+     * the hint for each of its own keys and matches in constant time.
+     */
+    fun keyHint(keyBytes: ByteArray): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(keyBytes, "HmacSHA256"))
+        return mac.doFinal(KEY_HINT_LABEL.toByteArray(Charsets.UTF_8)).copyOf(4)
+    }
+
+    fun keyHintHex(keyBytes: ByteArray): String {
+        return keyHint(keyBytes).joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * Constant-time comparison of a key's hint against a hint extracted from
+     * a received message.
+     */
+    fun matchesKeyHint(keyBytes: ByteArray, hintHex: String): Boolean {
+        val expected = hexToBytes(hintHex) ?: return false
+        return MessageDigest.isEqual(keyHint(keyBytes), expected)
+    }
+
+    // --- Recovery phrases ---
+
+    /** Number of words that carry key material. */
+    const val PHRASE_WORD_COUNT = 32
+
+    /** Total words in a phrase including the checksum word. */
+    const val PHRASE_TOTAL_WORD_COUNT = 33
+
+    /**
+     * Converts key bytes to a human-readable word phrase for sharing between
+     * users. The phrase is 33 words: 32 words encode the 256-bit key (one word
+     * per byte) plus a 33rd *checksum word* (the first byte of SHA-256(key))
+     * so that a single typo can be detected instead of silently producing a
+     * wrong key.
      */
     fun keyToWordPhrase(keyBytes: ByteArray): List<String> {
-        // Convert 32 bytes (256 bits) to word indices
-        // Each word encodes 11 bits, so 256 bits = ~24 words
-        // We'll use a simpler approach: each byte maps to a word (32 words)
         val words = mutableListOf<String>()
         for (byte in keyBytes) {
             val index = byte.toInt() and 0xFF // 0-255
             words.add(WORD_LIST[index])
         }
+        val checksum = MessageDigest.getInstance("SHA-256").digest(keyBytes)[0]
+        words.add(WORD_LIST[checksum.toInt() and 0xFF])
         return words
     }
 
+    sealed class PhraseParseResult {
+        data class Valid(val keyBytes: ByteArray) : PhraseParseResult()
+        /** Legacy 32-word phrase without a checksum word — accepted for
+         *  backward compatibility, but typos cannot be detected. */
+        data class ValidLegacyNoChecksum(val keyBytes: ByteArray) : PhraseParseResult()
+        object InvalidChecksum : PhraseParseResult()
+        object InvalidWord : PhraseParseResult()
+        object InvalidCount : PhraseParseResult()
+    }
+
     /**
-     * Converts a word phrase back to key bytes
+     * Parses a word phrase back into key bytes.
+     *
+     * Accepts 33 words (32 key words + checksum word, checksum verified) and
+     * legacy 32-word phrases (no checksum). Returns a [PhraseParseResult]
+     * describing exactly what was wrong so the UI can give useful feedback.
+     */
+    fun parseWordPhrase(words: List<String>): PhraseParseResult {
+        val normalized = words
+            .map { it.lowercase().trim() }
+            .filter { it.isNotEmpty() }
+
+        return when (normalized.size) {
+            PHRASE_TOTAL_WORD_COUNT -> {
+                val key = decodeWords(normalized.take(PHRASE_WORD_COUNT))
+                    ?: return PhraseParseResult.InvalidWord
+                val expectedChecksum =
+                    MessageDigest.getInstance("SHA-256").digest(key)[0].toInt() and 0xFF
+                val providedChecksum = wordToIndex(normalized[PHRASE_WORD_COUNT])
+                    ?: return PhraseParseResult.InvalidWord
+                if (providedChecksum != expectedChecksum) {
+                    PhraseParseResult.InvalidChecksum
+                } else {
+                    PhraseParseResult.Valid(key)
+                }
+            }
+            PHRASE_WORD_COUNT -> {
+                val key = decodeWords(normalized)
+                    ?: return PhraseParseResult.InvalidWord
+                PhraseParseResult.ValidLegacyNoChecksum(key)
+            }
+            else -> PhraseParseResult.InvalidCount
+        }
+    }
+
+    /**
+     * Converts a word phrase back to key bytes.
+     * Returns null if the phrase is invalid (wrong count, unknown words, or
+     * a checksum mismatch). Use [parseWordPhrase] if you need to distinguish
+     * failure reasons.
      */
     fun wordPhraseToKey(words: List<String>): ByteArray? {
-        if (words.size != 32) return null
-        val bytes = ByteArray(32)
-        for (i in words.indices) {
-            val index = WORD_LIST.indexOf(words[i].lowercase().trim())
-            if (index < 0) return null
-            bytes[i] = index.toByte()
+        return when (val result = parseWordPhrase(words)) {
+            is PhraseParseResult.Valid -> result.keyBytes
+            is PhraseParseResult.ValidLegacyNoChecksum -> result.keyBytes
+            else -> null
         }
-        return bytes
     }
 
     /**
@@ -63,6 +155,32 @@ object KeyGenerator {
      */
     fun shortPhrase(keyBytes: ByteArray): String {
         return keyToWordPhrase(keyBytes).take(8).joinToString(" ")
+    }
+
+    private fun decodeWords(words: List<String>): ByteArray? {
+        if (words.size != PHRASE_WORD_COUNT) return null
+        val bytes = ByteArray(PHRASE_WORD_COUNT)
+        for (i in words.indices) {
+            val index = wordToIndex(words[i]) ?: return null
+            bytes[i] = index.toByte()
+        }
+        return bytes
+    }
+
+    private fun wordToIndex(word: String): Int? {
+        return WORD_TO_INDEX[word]
+    }
+
+    private fun hexToBytes(hex: String): ByteArray? {
+        if (hex.length != 8) return null
+        return try {
+            ByteArray(4) { i ->
+                ((Character.digit(hex[i * 2], 16) shl 4) +
+                        Character.digit(hex[i * 2 + 1], 16)).toByte()
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     // 256-word list (one word per possible byte value 0-255)
@@ -121,4 +239,8 @@ object KeyGenerator {
         "table", "tiger", "torch", "tower", "trail",        // 250-254
         "trend"                                              // 255
     )
+
+    // Reverse lookup: word -> byte value (O(1) phrase parsing)
+    private val WORD_TO_INDEX: Map<String, Int> =
+        WORD_LIST.withIndex().associate { (index, word) -> word to index }
 }

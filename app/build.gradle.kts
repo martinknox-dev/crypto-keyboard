@@ -239,6 +239,8 @@ dependencies {
     testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+    // org.json for JVM unit tests of the crypto flavor (CipherKey, KeyExporter)
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.test.ext)
     androidTestImplementation(libs.androidx.test.espresso.core)
 

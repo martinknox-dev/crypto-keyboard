@@ -10,6 +10,7 @@ import android.view.accessibility.AccessibilityEvent
 import com.mkcreations.cryptokeyboard.core.SharedState
 import com.mkcreations.cryptokeyboard.crypto.DecryptCache
 import com.mkcreations.cryptokeyboard.crypto.MessageProcessor
+import com.mkcreations.cryptokeyboard.crypto.ReplayGuard
 import com.mkcreations.cryptokeyboard.storage.SecureKeyStore
 
 class CryptoAccessibilityService : AccessibilityService() {
@@ -74,6 +75,8 @@ class CryptoAccessibilityService : AccessibilityService() {
         SharedState.isAccessibilityConnected = false
         overlayManager?.removeAllOverlays()
         handler.removeCallbacksAndMessages(null)
+        DecryptCache.clearAll()
+        ReplayGuard.clear()
         super.onDestroy()
     }
 
@@ -261,6 +264,19 @@ class CryptoAccessibilityService : AccessibilityService() {
                 )
                 endOverlayModification()
             }
+            is MessageProcessor.DecryptResult.Replayed -> {
+                // Decryption succeeded but this exact ciphertext was already
+                // seen in a different message — flag it as a possible replay.
+                DecryptCache.put(node.fullText, result.secretMessage, result.keyLabel)
+                beginOverlayModification()
+                overlayManager?.showOverlay(
+                    overlayId = node.nodeId,
+                    decryptedText = "⚠️ Possible replay — this exact message was already seen.\n\n" + result.secretMessage,
+                    keyLabel = result.keyLabel,
+                    bounds = node.bounds
+                )
+                endOverlayModification()
+            }
             is MessageProcessor.DecryptResult.CorruptedData -> {
                 val indicatorBounds = Rect(
                     node.bounds.right - 20,
@@ -327,6 +343,7 @@ class CryptoAccessibilityService : AccessibilityService() {
     fun panicClear() {
         safeRemoveAllOverlays()
         DecryptCache.clearAll()
+        ReplayGuard.clear()
         SharedState.isExchangeModeActive = false
     }
 

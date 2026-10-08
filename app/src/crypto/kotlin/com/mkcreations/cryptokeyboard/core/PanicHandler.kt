@@ -6,8 +6,9 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.view.inputmethod.InputMethodManager
-// Removed old AccessibilityService import
+import com.mkcreations.cryptokeyboard.accessibility.CryptoAccessibilityService
 import com.mkcreations.cryptokeyboard.crypto.DecryptCache
+import com.mkcreations.cryptokeyboard.crypto.ReplayGuard
 import com.mkcreations.cryptokeyboard.model.PanicTrigger
 import com.mkcreations.cryptokeyboard.storage.SecureKeyStore
 import com.mkcreations.cryptokeyboard.storage.SettingsStore
@@ -132,15 +133,15 @@ class PanicHandler(private val context: Context) : SensorEventListener {
     private fun executePanic() {
         val settings = SettingsStore.getInstance(context).loadSettings()
 
-        // Step 1: Remove all overlays (instant)
+        // Step 1: Remove all overlays + stop exchange mode (instant)
         if (settings.panicRemoveOverlays) {
-            // Replaced Accessibility clearing with future IME state clearing
-            // TODO: Wire this to the FlorisBoard IME instance later
+            CryptoAccessibilityService.instance?.panicClear()
         }
 
-        // Step 2: Clear cache
+        // Step 2: Clear caches (decrypted plaintext + replay state)
         if (settings.panicClearCache) {
             DecryptCache.clearAll()
+            ReplayGuard.clear()
         }
 
         // Step 3: Disable exchange mode

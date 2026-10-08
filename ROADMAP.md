@@ -32,7 +32,25 @@ This document outlines development priorities for Crypto Keyboard.
 - UI polish and animations
 - Battery optimization for Exchange Mode
 - Error handling improvements
-- Documentation completion
+
+### Security Hardening — Completed 2026-10 ✅
+
+See [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md) for the full analysis (18 findings).
+
+- ✅ PBKDF2-HMAC-SHA256 (600k) PIN hashing, replacing 10k-round SHA-256
+- ✅ Working app-lock PIN gate (set/change/disable) with exponential lockout
+- ✅ Protocol v2: GCM AAD binds the header (version + key hint)
+- ✅ Keyed per-key HMAC hint on the wire (no constant fingerprint → no key clustering)
+- ✅ Session-scoped replay detection (re-sent ciphertexts flagged)
+- ✅ 33-word recovery phrases with checksum word (typo detection; legacy 32-word import kept)
+- ✅ Cover message sanitization (stego chars can no longer corrupt payloads)
+- ✅ Panic mode now actually removes decrypted overlays (was a TODO)
+- ✅ Send no longer deletes the user's typed text
+- ✅ Accessibility scanner skips password fields
+- ✅ Decrypt cache bounded (LRU); draft secrets no longer persisted in plaintext prefs
+- ✅ Key export: 600k PBKDF2, iteration count stored per file, legacy imports work
+- ✅ ~60 unit tests for the crypto core (`testCryptoDebugUnitTest` in CI)
+- ✅ Documentation corrected (replay/PIN claims) + architecture & review docs added
 
 ---
 
@@ -57,6 +75,8 @@ This document outlines development priorities for Crypto Keyboard.
   - [ ] Handle all edge cases gracefully
   - [ ] No crashes in common workflows
   - [ ] Proper error messages
+- [ ] **Crypto test coverage** (partially done — see hardening above; on-device
+  instrumented tests for the accessibility overlay path still needed)
 - [ ] **Documentation**
   - [ ] Complete user guide
   - [ ] Security documentation
