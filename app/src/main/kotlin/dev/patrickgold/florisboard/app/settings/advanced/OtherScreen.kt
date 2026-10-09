@@ -47,14 +47,14 @@ import dev.patrickgold.jetpref.datastore.ui.SwitchPreference
 import dev.patrickgold.jetpref.datastore.ui.isMaterialYou
 import dev.patrickgold.jetpref.datastore.ui.listPrefEntries
 import org.florisboard.lib.android.AndroidVersion
-import org.florisboard.lib.color.ColorMappings
+import org.florisboard.lib.snygg.color.ColorMappings
 import org.florisboard.lib.compose.stringRes
 
 
 @Composable
 fun OtherScreen() = FlorisScreen {
     title = stringRes(R.string.settings__other__title)
-    previewFieldVisible = false
+    previewFieldVisible = true
 
     val navController = LocalNavController.current
     val context = LocalContext.current

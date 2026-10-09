@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022-2025 The FlorisBoard Contributors
+ * Copyright (C) 2022-2026 The FlorisBoard Contributors
  * Modifications by MK (2026)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,11 +29,7 @@ plugins {
     alias(libs.plugins.kotlinx.kover)
 }
 
-val projectMinSdk: String by project
-val projectTargetSdk: String by project
-val projectCompileSdk: String by project
-val projectVersionCode: String by project
-val projectVersionName: String by project
+val projectVersionName = providers.gradleProperty("projectVersionName").get()
 val projectVersionNameSuffix = projectVersionName.substringAfter("-", "").let { suffix ->
     if (suffix.isNotEmpty()) {
         "-$suffix"
@@ -58,7 +54,7 @@ kotlin {
 
 configure<ApplicationExtension> {
     namespace = "dev.patrickgold.florisboard"
-    compileSdk = projectCompileSdk.toInt()
+    compileSdk = providers.gradleProperty("projectCompileSdk").get().toInt()
     buildToolsVersion = tools.versions.buildTools.get()
     ndkVersion = tools.versions.ndk.get()
 
@@ -69,9 +65,9 @@ configure<ApplicationExtension> {
 
     defaultConfig {
         applicationId = "dev.patrickgold.florisboard"
-        minSdk = projectMinSdk.toInt()
-        targetSdk = projectTargetSdk.toInt()
-        versionCode = projectVersionCode.toInt()
+        minSdk = providers.gradleProperty("projectMinSdk").get().toInt()
+        targetSdk = providers.gradleProperty("projectTargetSdk").get().toInt()
+        versionCode = providers.gradleProperty("projectVersionCode").get().toInt()
         versionName = projectVersionName.substringBefore("-")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -189,6 +185,8 @@ kover {
 dependencies {
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
+    // testImplementation(composeBom)
+    // androidTestImplementation(composeBom)
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.activity.ktx)
@@ -210,8 +208,10 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.window.core)
     implementation(libs.cache4k)
+    implementation(libs.k3lp.core)
     implementation(libs.kotlin.reflect)
     implementation(libs.kotlinx.coroutines)
+    implementation(libs.kotlinx.io)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.mikepenz.aboutlibraries.core)
     implementation(libs.mikepenz.aboutlibraries.compose)
@@ -222,7 +222,6 @@ dependencies {
     implementation(libs.patrickgold.jetpref.material.ui)
 
     implementation(projects.lib.android)
-    implementation(projects.lib.color)
     implementation(projects.lib.compose)
     implementation(projects.lib.kotlin)
     implementation(projects.lib.native)

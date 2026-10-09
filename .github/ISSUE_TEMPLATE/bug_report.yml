@@ -131,6 +131,8 @@ body:
       options:
         - label: "I searched [existing issues](https://github.com/martinknox-dev/crypto-keyboard/issues?q=is%3Aissue) and this bug hasn't been reported."
           required: true
+        - label: "I made sure that the bug is present in the [latest preview version](https://github.com/martinknox-dev/crypto-keyboard/releases)."
+          required: true
         - label: "I have read the [Contributing Guidelines](https://github.com/martinknox-dev/crypto-keyboard/blob/main/CONTRIBUTING.md)."
           required: true
         - label: "This is NOT a security vulnerability (those should be reported privately)."

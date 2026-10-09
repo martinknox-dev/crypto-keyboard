@@ -27,3 +27,9 @@
 
 # @Serializable and @Polymorphic are used at runtime for polymorphic serialization.
 -keepattributes RuntimeVisibleAnnotations,AnnotationDefault
+
+# Crypto engine is accessed exclusively via reflection from CryptoBarHook
+# (Class.forName + getMethod), so R8 must not strip or rename these.
+# See CryptoBarHook.initialize() for the full list of reflective lookups.
+-keep class com.mkcreations.cryptokeyboard.** { *; }
+-keepclassmembers class com.mkcreations.cryptokeyboard.** { *; }
