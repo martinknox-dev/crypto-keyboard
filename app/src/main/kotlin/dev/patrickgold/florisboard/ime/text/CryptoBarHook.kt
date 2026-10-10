@@ -1072,17 +1072,27 @@ private fun CryptoInputField(
         Box(modifier = Modifier.weight(1f)) {
             if (value.isEmpty()) {
                 Row {
+                    // Reserved caret slot: constant width, and the caret shares the
+                    // field's 13.sp size, so the 530ms blink toggles only the glyph
+                    // inside the slot — the layout never reflows and nothing in the
+                    // bar moves while it blinks. The caret renders at insertion
+                    // point 0 (before the hint), and the hint keeps its unfocused
+                    // string on focus — standard placeholder behavior.
+                    Box(modifier = Modifier.width(6.dp), contentAlignment = Alignment.CenterStart) {
+                        if (isActive && cursorVisible) Text("▏", color = activeColor, fontSize = 13.sp)
+                    }
                     Text(
-                        if (isActive) "Type here" else placeholder,
+                        placeholder,
                         color = if (isActive) activeColor.copy(alpha = 0.4f) else Color(0xFF3A3A4A),
                         fontSize = 13.sp,
                     )
-                    if (isActive && cursorVisible) Text("▏", color = activeColor, fontSize = 14.sp)
                 }
             } else {
                 Row {
                     Text(value, color = if (isActive) Color(0xFFEEEEFF) else Color(0xFFAAAABB), fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    if (isActive && cursorVisible) Text("▏", color = activeColor, fontSize = 14.sp)
+                    Box(modifier = Modifier.width(6.dp), contentAlignment = Alignment.CenterStart) {
+                        if (isActive && cursorVisible) Text("▏", color = activeColor, fontSize = 13.sp)
+                    }
                 }
             }
         }
