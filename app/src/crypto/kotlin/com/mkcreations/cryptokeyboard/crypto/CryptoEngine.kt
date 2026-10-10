@@ -1,134 +1,134 @@
 package com.mkcreations.cryptokeyboard.crypto
 
 import java.security.SecureRandom
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
+/**
+ * AES-256-GCM message encryption.
+ *
+ * v2 wire format: [1 byte version=2][12 byte IV][ciphertext + 16 byte tag]
+ * AAD = the 13 header bytes (version + IV), so header tampering fails auth.
+ *
+ * v1 wire format (legacy receive only): [1 byte version=1][4 byte fingerprint]
+ * [12 byte IV][ciphertext + tag], no AAD. The fingerprint identifies the key.
+ */
 object CryptoEngine {
 
     private const val ALGORITHM = "AES"
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
     private const val GCM_TAG_BITS = 128
-    private const val IV_SIZE = 12        // 96 bits - standard for GCM
-    private const val VERSION: Byte = 1   // Protocol version
+    private const val IV_SIZE = 12
+    private const val TAG_SIZE = 16
+    private const val KEY_SIZE = 32
+
+    const val VERSION_V1: Byte = 1
+    const val VERSION_V2: Byte = 2
+    private const val V1_HEADER_SIZE = 1 + 4 + IV_SIZE   // version + fingerprint + IV
+    private const val V2_HEADER_SIZE = 1 + IV_SIZE       // version + IV
 
     private val secureRandom = SecureRandom()
 
-    /**
-     * Encrypts plaintext using AES-256-GCM
-     *
-     * Output format:
-     * [1 byte version][4 bytes key fingerprint][12 bytes IV][N bytes ciphertext + GCM tag]
-     *
-     * The key fingerprint is NOT encrypted — it tells the receiver which key to use
-     * Everything else is authenticated and encrypted
-     */
-    fun encrypt(plaintext: String, keyBytes: ByteArray): ByteArray? {
+    sealed interface EncryptOutcome {
+        data class Success(val payload: ByteArray) : EncryptOutcome {
+            override fun equals(other: Any?): Boolean =
+                other is Success && payload.contentEquals(other.payload)
+            override fun hashCode(): Int = payload.contentHashCode()
+        }
+        data class Failure(val reason: EncryptFailure, val cause: Throwable? = null) : EncryptOutcome
+    }
+
+    enum class EncryptFailure { INVALID_KEY_SIZE, CIPHER_ERROR }
+
+    sealed interface DecryptOutcome {
+        data class Success(val plaintext: String) : DecryptOutcome
+        object NotOurFormat : DecryptOutcome
+        object AuthenticationFailed : DecryptOutcome
+        data class Failure(val reason: String, val cause: Throwable? = null) : DecryptOutcome
+    }
+
+    fun encrypt(plaintext: String, keyBytes: ByteArray): EncryptOutcome {
+        if (keyBytes.size != KEY_SIZE) {
+            return EncryptOutcome.Failure(EncryptFailure.INVALID_KEY_SIZE)
+        }
         return try {
-            val plaintextBytes = plaintext.toByteArray(Charsets.UTF_8)
+            val iv = ByteArray(IV_SIZE).also { secureRandom.nextBytes(it) }
+            val header = ByteArray(V2_HEADER_SIZE)
+            header[0] = VERSION_V2
+            iv.copyInto(header, 1)
 
-            // Generate random IV
-            val iv = ByteArray(IV_SIZE)
-            secureRandom.nextBytes(iv)
-
-            // Get key fingerprint (first 4 bytes of SHA-256 hash)
-            val fingerprint = KeyGenerator.fingerprint(keyBytes)
-            val fingerprintBytes = hexToBytes(fingerprint)
-
-            // Encrypt
-            val secretKey = SecretKeySpec(keyBytes, ALGORITHM)
             val cipher = Cipher.getInstance(TRANSFORMATION)
-            val gcmSpec = GCMParameterSpec(GCM_TAG_BITS, iv)
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec)
-            val encrypted = cipher.doFinal(plaintextBytes)
+            cipher.init(
+                Cipher.ENCRYPT_MODE,
+                SecretKeySpec(keyBytes, ALGORITHM),
+                GCMParameterSpec(GCM_TAG_BITS, iv)
+            )
+            cipher.updateAAD(header)
+            val encrypted = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
 
-            // Assemble: version + fingerprint + IV + encrypted(ciphertext + tag)
-            val result = ByteArray(1 + 4 + IV_SIZE + encrypted.size)
-            result[0] = VERSION
-            System.arraycopy(fingerprintBytes, 0, result, 1, 4)
-            System.arraycopy(iv, 0, result, 5, IV_SIZE)
-            System.arraycopy(encrypted, 0, result, 5 + IV_SIZE, encrypted.size)
-
-            result
+            val payload = ByteArray(V2_HEADER_SIZE + encrypted.size)
+            header.copyInto(payload, 0)
+            encrypted.copyInto(payload, V2_HEADER_SIZE)
+            EncryptOutcome.Success(payload)
         } catch (e: Exception) {
-            e.printStackTrace()
-            null
+            EncryptOutcome.Failure(EncryptFailure.CIPHER_ERROR, e)
         }
     }
 
-    /**
-     * Decrypts ciphertext using AES-256-GCM
-     *
-     * Returns plaintext string or null if decryption fails
-     * Fails silently if wrong key, tampered data, or corrupted
-     */
-    fun decrypt(data: ByteArray, keyBytes: ByteArray): String? {
+    fun decryptV2(data: ByteArray, keyBytes: ByteArray): DecryptOutcome {
+        if (data.size < V2_HEADER_SIZE + TAG_SIZE) return DecryptOutcome.NotOurFormat
+        if (data[0] != VERSION_V2) return DecryptOutcome.NotOurFormat
         return try {
-            if (data.size < 1 + 4 + IV_SIZE + 16) return null // Minimum: header + at least GCM tag
-
-            // Read version
-            val version = data[0]
-            if (version != VERSION) return null
-
-            // Read IV
-            val iv = ByteArray(IV_SIZE)
-            System.arraycopy(data, 5, iv, 0, IV_SIZE)
-
-            // Read encrypted data (ciphertext + GCM tag)
-            val encryptedSize = data.size - 1 - 4 - IV_SIZE
-            val encrypted = ByteArray(encryptedSize)
-            System.arraycopy(data, 5 + IV_SIZE, encrypted, 0, encryptedSize)
-
-            // Decrypt
-            val secretKey = SecretKeySpec(keyBytes, ALGORITHM)
+            val header = data.copyOfRange(0, V2_HEADER_SIZE)
+            val iv = header.copyOfRange(1, V2_HEADER_SIZE)
+            val ciphertext = data.copyOfRange(V2_HEADER_SIZE, data.size)
             val cipher = Cipher.getInstance(TRANSFORMATION)
-            val gcmSpec = GCMParameterSpec(GCM_TAG_BITS, iv)
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
-            val decrypted = cipher.doFinal(encrypted)
-
-            String(decrypted, Charsets.UTF_8)
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                SecretKeySpec(keyBytes, ALGORITHM),
+                GCMParameterSpec(GCM_TAG_BITS, iv)
+            )
+            cipher.updateAAD(header)
+            DecryptOutcome.Success(String(cipher.doFinal(ciphertext), Charsets.UTF_8))
+        } catch (e: AEADBadTagException) {
+            DecryptOutcome.AuthenticationFailed
         } catch (e: Exception) {
-            // Decryption failed — wrong key, tampered data, or corrupted
-            null
+            DecryptOutcome.Failure("v2 decryption error", e)
         }
     }
 
-    /**
-     * Extracts the key fingerprint from encrypted data
-     * Used to determine which key to try for decryption
-     */
+    fun decryptV1(data: ByteArray, keyBytes: ByteArray): DecryptOutcome {
+        if (data.size < V1_HEADER_SIZE + TAG_SIZE) return DecryptOutcome.NotOurFormat
+        if (data[0] != VERSION_V1) return DecryptOutcome.NotOurFormat
+        return try {
+            val iv = data.copyOfRange(5, 5 + IV_SIZE)
+            val ciphertext = data.copyOfRange(V1_HEADER_SIZE, data.size)
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                SecretKeySpec(keyBytes, ALGORITHM),
+                GCMParameterSpec(GCM_TAG_BITS, iv)
+            )
+            DecryptOutcome.Success(String(cipher.doFinal(ciphertext), Charsets.UTF_8))
+        } catch (e: AEADBadTagException) {
+            DecryptOutcome.AuthenticationFailed
+        } catch (e: Exception) {
+            DecryptOutcome.Failure("v1 decryption error", e)
+        }
+    }
+
+    /** Only meaningful for v1 payloads; null for v2 or unknown data. */
     fun extractFingerprint(data: ByteArray): String? {
-        if (data.size < 5) return null
-        if (data[0] != VERSION) return null
-        val fingerprintBytes = ByteArray(4)
-        System.arraycopy(data, 1, fingerprintBytes, 0, 4)
-        return bytesToHex(fingerprintBytes)
+        if (data.size < 5 || data[0] != VERSION_V1) return null
+        return (1..4).joinToString("") { "%02x".format(data[it]) }
     }
 
-    /**
-     * Validates that data looks like our encrypted format
-     */
-    fun isValidFormat(data: ByteArray): Boolean {
-        if (data.size < 1 + 4 + IV_SIZE + 16) return false
-        return data[0] == VERSION
-    }
-
-    // --- Hex utilities ---
-
-    private fun hexToBytes(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        var i = 0
-        while (i < len) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) +
-                    Character.digit(hex[i + 1], 16)).toByte()
-            i += 2
-        }
-        return data
-    }
-
-    private fun bytesToHex(bytes: ByteArray): String {
-        return bytes.joinToString("") { "%02x".format(it) }
+    fun isValidFormat(data: ByteArray): Boolean = when {
+        data.isEmpty() -> false
+        data[0] == VERSION_V2 && data.size >= V2_HEADER_SIZE + TAG_SIZE -> true
+        data[0] == VERSION_V1 && data.size >= V1_HEADER_SIZE + TAG_SIZE -> true
+        else -> false
     }
 }

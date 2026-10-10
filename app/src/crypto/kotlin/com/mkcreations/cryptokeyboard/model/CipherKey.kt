@@ -23,7 +23,7 @@ data class CipherKey(
         return JSONObject().apply {
             put("id", id)
             put("label", label)
-            put("keyBytes", android.util.Base64.encodeToString(keyBytes, android.util.Base64.NO_WRAP))
+            put("keyBytes", java.util.Base64.getEncoder().encodeToString(keyBytes))
             put("createdAt", createdAt)
             put("lastUsedAt", lastUsedAt)
             put("coverStyle", coverStyle.name)
@@ -41,7 +41,7 @@ data class CipherKey(
             return CipherKey(
                 id = json.getString("id"),
                 label = json.getString("label"),
-                keyBytes = android.util.Base64.decode(json.getString("keyBytes"), android.util.Base64.NO_WRAP),
+                keyBytes = java.util.Base64.getDecoder().decode(json.getString("keyBytes")),
                 createdAt = json.getLong("createdAt"),
                 lastUsedAt = json.getLong("lastUsedAt"),
                 coverStyle = CoverStyle.valueOf(json.optString("coverStyle", CoverStyle.RANDOM_CASUAL.name)),

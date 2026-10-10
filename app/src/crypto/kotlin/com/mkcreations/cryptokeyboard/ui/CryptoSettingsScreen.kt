@@ -11,6 +11,15 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material3.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import com.mkcreations.cryptokeyboard.storage.SettingsStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -33,6 +42,16 @@ fun CryptoSettingsScreen() = FlorisScreen {
     var isAccessibilityEnabled by remember {
         mutableStateOf(isAccessibilityServiceEnabled(context))
     }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var pinValue by remember { mutableStateOf("") }
+    var pinConfirm by remember { mutableStateOf("") }
+    var pinCurrent by remember { mutableStateOf("") }
+    var pinConfigured by remember {
+        mutableStateOf(
+            SettingsStore.getInstance(context).loadSettings().pinHash.isNotEmpty()
+        )
+    }
+    val coroutineScope = rememberCoroutineScope()
 
     content {
         PreferenceGroup(title = "Key Management") {
@@ -101,9 +120,9 @@ fun CryptoSettingsScreen() = FlorisScreen {
             Preference(
                 icon = Icons.Default.Lock,
                 title = "Change App Lock PIN",
-                summary = "Update the PIN used to access your keys",
+                summary = "Change or disable the PIN that locks the keyboard",
                 onClick = {
-                    // TODO: Route to Lock/PIN screen
+                    showPinDialog = true
                 }
             )
 
@@ -113,6 +132,103 @@ fun CryptoSettingsScreen() = FlorisScreen {
                 summary = "Configure emergency wipe triggers",
                 onClick = {
                     // TODO: Route to panic settings
+                }
+            )
+        }
+
+        if (showPinDialog) {
+            AlertDialog(
+                onDismissRequest = { showPinDialog = false },
+                title = { Text("App Lock PIN") },
+                text = {
+                    Column {
+                        if (pinConfigured) {
+                            OutlinedTextField(
+                                value = pinCurrent,
+                                onValueChange = { pinCurrent = it },
+                                label = { Text("Current PIN") },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        OutlinedTextField(
+                            value = pinValue,
+                            onValueChange = { pinValue = it },
+                            label = { Text("New PIN (4+ digits)") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = pinConfirm,
+                            onValueChange = { pinConfirm = it },
+                            label = { Text("Confirm PIN") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        when {
+                            pinValue.length < 4 -> {
+                                Toast.makeText(context, "PIN must be at least 4 digits", Toast.LENGTH_SHORT).show()
+                            }
+                            pinValue != pinConfirm -> {
+                                Toast.makeText(context, "PINs do not match", Toast.LENGTH_SHORT).show()
+                            }
+                            else -> {
+                                val store = SettingsStore.getInstance(context)
+                                val needsCurrent = pinConfigured
+                                val current = pinCurrent
+                                val newPin = pinValue
+                                coroutineScope.launch {
+                                    // PBKDF2-600k: verification and hashing on IO, never the UI thread
+                                    val currentOk = !needsCurrent ||
+                                        withContext(Dispatchers.IO) { store.verifyPin(current) }
+                                    if (!currentOk) {
+                                        Toast.makeText(context, "Current PIN is incorrect", Toast.LENGTH_LONG).show()
+                                        return@launch
+                                    }
+                                    withContext(Dispatchers.IO) { store.setPin(newPin) }
+                                    pinValue = ""
+                                    pinConfirm = ""
+                                    pinCurrent = ""
+                                    showPinDialog = false
+                                    pinConfigured = true
+                                    Toast.makeText(context, "App lock enabled", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }) { Text("Save") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        if (!pinConfigured) {
+                            showPinDialog = false
+                        } else {
+                            val store = SettingsStore.getInstance(context)
+                            val current = pinCurrent
+                            coroutineScope.launch {
+                                val currentOk = withContext(Dispatchers.IO) { store.verifyPin(current) }
+                                if (!currentOk) {
+                                    Toast.makeText(context, "Current PIN is incorrect", Toast.LENGTH_LONG).show()
+                                    return@launch
+                                }
+                                store.clearPin()
+                                pinValue = ""
+                                pinConfirm = ""
+                                pinCurrent = ""
+                                showPinDialog = false
+                                pinConfigured = false
+                                Toast.makeText(context, "App lock disabled", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }) { Text("Turn off lock") }
                 }
             )
         }

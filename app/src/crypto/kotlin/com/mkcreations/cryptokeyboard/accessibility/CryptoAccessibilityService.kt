@@ -7,10 +7,12 @@ import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import com.mkcreations.cryptokeyboard.core.PanicHandler
 import com.mkcreations.cryptokeyboard.core.SharedState
 import com.mkcreations.cryptokeyboard.crypto.DecryptCache
 import com.mkcreations.cryptokeyboard.crypto.MessageProcessor
 import com.mkcreations.cryptokeyboard.storage.SecureKeyStore
+import com.mkcreations.cryptokeyboard.storage.SettingsStore
 
 class CryptoAccessibilityService : AccessibilityService() {
 
@@ -22,6 +24,7 @@ class CryptoAccessibilityService : AccessibilityService() {
 
     private var overlayManager: OverlayManager? = null
     private var keyStore: SecureKeyStore? = null
+    private var panicHandler: PanicHandler? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private var pendingUpdate: Runnable? = null
@@ -57,6 +60,8 @@ class CryptoAccessibilityService : AccessibilityService() {
         SharedState.isAccessibilityConnected = true
         keyStore = SecureKeyStore.getInstance(this)
         overlayManager = OverlayManager(this)
+        OverlayManager.onManagerCreated(overlayManager!!)
+        startPanicHandlerIfEnabled()
 
         val wm = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
         val metrics = DisplayMetrics()
@@ -72,9 +77,20 @@ class CryptoAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         instance = null
         SharedState.isAccessibilityConnected = false
+        panicHandler?.stopListening()
+        panicHandler = null
         overlayManager?.removeAllOverlays()
+        overlayManager?.let { OverlayManager.onManagerDestroyed(it) }
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
+    }
+
+    /** Panic mode was previously never instantiated — start it when enabled. */
+    private fun startPanicHandlerIfEnabled() {
+        val settings = SettingsStore.getInstance(this).loadSettings()
+        if (!settings.panicEnabled) return
+        panicHandler = PanicHandler(this).also { it.startListening(settings.panicTrigger) }
+        Log.d(TAG, "Panic handler started (trigger: ${settings.panicTrigger})")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -236,6 +252,8 @@ class CryptoAccessibilityService : AccessibilityService() {
             return
         }
 
+        // Cache first: re-displaying an already-decrypted message (e.g. on
+        // scroll) must keep working; a cache hit is not a decryption.
         val cached = DecryptCache.get(node.fullText)
         if (cached != null) {
             beginOverlayModification()
@@ -249,7 +267,13 @@ class CryptoAccessibilityService : AccessibilityService() {
             return
         }
 
-        when (val result = MessageProcessor.detectAndDecrypt(node.fullText, store)) {
+        // Replays reach no decryption attempt (spec §2: rejected before
+        // decryption); skips the trial-decrypt loop for known payloads.
+        if (MessageProcessor.isKnownReplay(node.fullText)) {
+            return
+        }
+
+        when (val result = MessageProcessor.detectAndDecrypt(node.fullText, store.getAllKeys())) {
             is MessageProcessor.DecryptResult.Success -> {
                 DecryptCache.put(node.fullText, result.secretMessage, result.keyLabel)
                 beginOverlayModification()
@@ -280,6 +304,7 @@ class CryptoAccessibilityService : AccessibilityService() {
             is MessageProcessor.DecryptResult.NoMatchingKey -> {}
             is MessageProcessor.DecryptResult.DecryptionFailed -> {}
             is MessageProcessor.DecryptResult.NotEncrypted -> {}
+            is MessageProcessor.DecryptResult.Replayed -> {}
         }
     }
 

@@ -45,19 +45,43 @@ object InvisibleEncoder {
     private val SIGNATURE_STR = "\u2069\u2068\u2069\u2068"  // Pop/First Directional Isolate pattern
     private val END_MARKER_STR = "\u2068\u2069\u2068\u2069"  // Reversed pattern
 
+    /** All characters that would corrupt payload extraction (encoding alphabet + markers). */
+    private val FORBIDDEN_COVER_CHARS: Set<Char> =
+        INVISIBLE_CHARS.toSet() + '\u2068' + '\u2069'
+
+    /**
+     * Strips every character the encoding uses (or that marks payload
+     * boundaries) from user-provided cover text, so pasted zero-width
+     * characters cannot corrupt extraction of the payload.
+     */
+    fun sanitizeCover(text: String): String =
+        text.filter { it !in FORBIDDEN_COVER_CHARS }
+
+    /** Typed result of extracting a payload from a message. */
+    sealed interface ExtractOutcome {
+        data class Success(val data: ByteArray) : ExtractOutcome {
+            override fun equals(other: Any?): Boolean =
+                other is Success && data.contentEquals(other.data)
+            override fun hashCode(): Int = data.contentHashCode()
+        }
+        object NotPresent : ExtractOutcome
+        object Malformed : ExtractOutcome
+    }
+
     /**
      * Encodes encrypted bytes into invisible characters
      * and embeds them into a cover message.
      */
     fun embedInCover(encryptedData: ByteArray, coverMessage: String): String {
+        val cover = sanitizeCover(coverMessage)
         try {
             val invisibleData = bytesToInvisible(encryptedData)
 
-            if (coverMessage.isEmpty()) {
+            if (cover.isEmpty()) {
                 return SIGNATURE_STR + invisibleData + END_MARKER_STR
             }
 
-            val coverChars = coverMessage.toList()
+            val coverChars = cover.toList()
             val result = StringBuilder()
             val invisibleChars = invisibleData.toList()
 
@@ -91,7 +115,7 @@ object InvisibleEncoder {
 
         } catch (e: Exception) {
             // Fallback: just concatenate
-            return coverMessage + SIGNATURE_STR + bytesToInvisible(encryptedData) + END_MARKER_STR
+            return cover + SIGNATURE_STR + bytesToInvisible(encryptedData) + END_MARKER_STR
         }
     }
 
@@ -111,29 +135,33 @@ object InvisibleEncoder {
     }
 
     /**
-     * Extracts hidden encrypted bytes from a message
-     * Returns null if no hidden data found or data is corrupted
+     * Extracts hidden encrypted bytes from a message.
+     * Returns [ExtractOutcome.NotPresent] when no signature exists,
+     * [ExtractOutcome.Malformed] when a signature exists but the payload
+     * cannot be reconstructed (truncated or corrupted cover text).
      */
-    fun extractFromMessage(message: String): ByteArray? {
+    fun extractFromMessage(message: String): ExtractOutcome {
         return try {
             val sigIndex = message.indexOf(SIGNATURE_STR)
-            if (sigIndex < 0) return null
+            if (sigIndex < 0) return ExtractOutcome.NotPresent
 
             val dataStart = sigIndex + SIGNATURE_STR.length
             val endIndex = message.indexOf(END_MARKER_STR, dataStart)
-            if (endIndex < 0 || endIndex <= dataStart) return null
+            if (endIndex < 0 || endIndex <= dataStart) return ExtractOutcome.Malformed
 
             val dataPortion = message.substring(dataStart, endIndex)
 
             // Filter only our encoding characters (remove visible cover chars)
             val invisibleOnly = dataPortion.filter { it in CHAR_TO_NIBBLE }
 
-            if (invisibleOnly.isEmpty()) return null
-            if (invisibleOnly.length % 2 != 0) return null
+            if (invisibleOnly.isEmpty()) return ExtractOutcome.Malformed
+            if (invisibleOnly.length % 2 != 0) return ExtractOutcome.Malformed
 
-            invisibleToBytes(invisibleOnly)
+            val bytes = invisibleToBytes(invisibleOnly)
+                ?: return ExtractOutcome.Malformed
+            ExtractOutcome.Success(bytes)
         } catch (e: Exception) {
-            null
+            ExtractOutcome.Malformed
         }
     }
 
@@ -219,7 +247,7 @@ object InvisibleEncoder {
      * Returns stats about the encoding for UI display
      */
     fun getEncodingStats(secretMessage: String, coverMessage: String): EncodingStats {
-        val estimatedEncryptedSize = 1 + 4 + 12 + secretMessage.toByteArray().size + 16
+        val estimatedEncryptedSize = 1 + 12 + secretMessage.toByteArray().size + 16
         val invisibleCharCount = estimatedEncryptedSize * 2
         val markerChars = SIGNATURE_STR.length + END_MARKER_STR.length
         val totalChars = coverMessage.length + invisibleCharCount + markerChars

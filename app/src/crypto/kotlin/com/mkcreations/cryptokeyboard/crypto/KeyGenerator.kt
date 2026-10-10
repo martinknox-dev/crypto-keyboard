@@ -29,30 +29,51 @@ object KeyGenerator {
 
     /**
      * Converts key bytes to a human-readable word phrase (BIP39-style)
-     * for sharing between users
+     * for sharing between users. Returns 33 words: 32 data words plus a
+     * final checksum word derived from SHA-256(key)[0].
      */
     fun keyToWordPhrase(keyBytes: ByteArray): List<String> {
         // Convert 32 bytes (256 bits) to word indices
-        // Each word encodes 11 bits, so 256 bits = ~24 words
-        // We'll use a simpler approach: each byte maps to a word (32 words)
+        // Each byte maps to one word (32 words), then append the checksum word
         val words = mutableListOf<String>()
         for (byte in keyBytes) {
             val index = byte.toInt() and 0xFF // 0-255
             words.add(WORD_LIST[index])
         }
+        words.add(checksumWord(keyBytes))
         return words
     }
 
     /**
-     * Converts a word phrase back to key bytes
+     * Checksum word derived from SHA-256(key)[0]; appended as the 33rd word.
+     * Any single mistyped data word changes the derived key and therefore
+     * the expected checksum, so typos are detected on import.
+     */
+    fun checksumWord(keyBytes: ByteArray): String {
+        val hash = MessageDigest.getInstance("SHA-256").digest(keyBytes)
+        return WORD_LIST[hash[0].toInt() and 0xFF]
+    }
+
+    /**
+     * Converts a word phrase back to key bytes.
+     * Accepts 33 words (checksum validated) or legacy 32-word phrases
+     * (no checksum available). Returns null for unknown words, wrong
+     * lengths, or a failed checksum.
      */
     fun wordPhraseToKey(words: List<String>): ByteArray? {
-        if (words.size != 32) return null
+        val dataWords = when (words.size) {
+            33 -> words.take(32)
+            32 -> words // legacy phrase without checksum
+            else -> return null
+        }
         val bytes = ByteArray(32)
-        for (i in words.indices) {
-            val index = WORD_LIST.indexOf(words[i].lowercase().trim())
+        for (i in dataWords.indices) {
+            val index = WORD_LIST.indexOf(dataWords[i].lowercase().trim())
             if (index < 0) return null
             bytes[i] = index.toByte()
+        }
+        if (words.size == 33 && words[32].lowercase().trim() != checksumWord(bytes)) {
+            return null // checksum mismatch — a word is mistyped
         }
         return bytes
     }

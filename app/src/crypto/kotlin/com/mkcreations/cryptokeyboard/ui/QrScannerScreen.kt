@@ -131,12 +131,16 @@ fun QrScannerScreen(
                                                         if (barcode.valueType == Barcode.TYPE_TEXT) {
                                                             val rawValue = barcode.rawValue ?: continue
                                                             if (QrCodeHelper.isValidPayload(rawValue)) {
-                                                                val key = QrCodeHelper.parseQrPayload(rawValue)
-                                                                if (key != null && !hasScanned) {
-                                                                    hasScanned = true
-                                                                    onKeyScanned(key)
-                                                                } else if (key == null) {
-                                                                    scanError = "Invalid key data in QR code"
+                                                                when (val parsed = QrCodeHelper.parseQrPayload(rawValue)) {
+                                                                    is QrCodeHelper.ParseOutcome.Success -> {
+                                                                        if (!hasScanned) {
+                                                                            hasScanned = true
+                                                                            onKeyScanned(parsed.key)
+                                                                        }
+                                                                    }
+                                                                    is QrCodeHelper.ParseOutcome.Failure -> {
+                                                                        scanError = "Invalid key data in QR code"
+                                                                    }
                                                                 }
                                                             }
                                                         }

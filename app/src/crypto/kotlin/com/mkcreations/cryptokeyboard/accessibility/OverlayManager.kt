@@ -19,6 +19,23 @@ class OverlayManager(private val context: Context) {
 
     companion object {
         private const val TAG = "OverlayManager"
+
+        /** Single active manager (services run in the app's main process). */
+        @Volatile
+        private var current: OverlayManager? = null
+
+        fun onManagerCreated(manager: OverlayManager) {
+            current = manager
+        }
+
+        fun onManagerDestroyed(manager: OverlayManager) {
+            if (current === manager) current = null
+        }
+
+        /** Called by panic mode: remove every overlay this process has added. */
+        fun removeAllActiveOverlays() {
+            current?.removeAllOverlays()
+        }
     }
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager

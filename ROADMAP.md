@@ -21,8 +21,9 @@ This document outlines development priorities for Crypto Keyboard.
 - QR code key exchange
 - Accessibility Service screen scanning
 - Overlay decryption display
-- Decryption cache
-- PIN-protected key storage
+- Decryption cache (LRU, capped)
+- PIN-protected app lock (PBKDF2 + backoff)
+- Replay detection (best-effort, per device)
 - Password-protected key export
 - Compatibility testing tool
 - Clipboard decryption

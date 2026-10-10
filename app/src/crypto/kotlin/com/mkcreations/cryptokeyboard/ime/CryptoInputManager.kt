@@ -86,7 +86,7 @@ class CryptoInputManager(private val context: Context) {
             return DecryptionResult.Error("Failed to access key store")
         }
 
-        return when (val result = MessageProcessor.detectAndDecrypt(message, keyStore)) {
+        return when (val result = MessageProcessor.detectAndDecrypt(message, keyStore.getAllKeys())) {
             is MessageProcessor.DecryptResult.Success -> {
                 DecryptionResult.Success(
                     secretMessage = result.secretMessage,
@@ -105,6 +105,9 @@ class CryptoInputManager(private val context: Context) {
             }
             is MessageProcessor.DecryptResult.DecryptionFailed -> {
                 DecryptionResult.Error("Decryption failed — wrong key or tampered data")
+            }
+            is MessageProcessor.DecryptResult.Replayed -> {
+                DecryptionResult.Error("Duplicate message rejected (replay)")
             }
         }
     }

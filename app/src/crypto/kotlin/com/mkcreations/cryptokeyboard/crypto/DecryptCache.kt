@@ -1,29 +1,103 @@
 package com.mkcreations.cryptokeyboard.crypto
 
 import java.security.MessageDigest
-import java.util.concurrent.ConcurrentHashMap
 
 /**
- * In-memory cache for decrypted messages.
- * Avoids re-decrypting the same message when scrolling.
- * Auto-clears after timeout. Never persisted to disk.
+ * Bounded, time-expiring store for decrypted messages.
+ * Capped at [maxEntries] with least-recently-used eviction; entries
+ * auto-expire after [durationMs]. Injectable clock for tests.
  */
-object DecryptCache {
+class DecryptCacheStore(
+    private val maxEntries: Int = 500,
+    durationMs: Long = 5 * 60 * 1000L,
+    private val clock: () -> Long = System::currentTimeMillis
+) {
 
-    private data class CacheEntry(
+    data class Entry(
         val secretMessage: String,
         val keyLabel: String,
         val timestamp: Long
     )
 
-    private val cache = ConcurrentHashMap<String, CacheEntry>()
-    private var cacheDurationMs: Long = 5 * 60 * 1000L // 5 minutes default
+    private var duration: Long = durationMs
+
+    // accessOrder=true gives LRU behavior on get
+    private val cache = LinkedHashMap<String, Entry>(16, 0.75f, true)
+
+    @Synchronized
+    fun setDuration(minutes: Int) {
+        duration = minutes * 60 * 1000L
+    }
+
+    @Synchronized
+    fun put(originalMessage: String, secretMessage: String, keyLabel: String) {
+        cache[hashMessage(originalMessage)] = Entry(
+            secretMessage = secretMessage,
+            keyLabel = keyLabel,
+            timestamp = clock()
+        )
+        while (cache.size > maxEntries) {
+            val eldest = cache.entries.iterator()
+            eldest.next()
+            eldest.remove()
+        }
+    }
+
+    @Synchronized
+    fun get(originalMessage: String): Entry? {
+        val hash = hashMessage(originalMessage)
+        val entry = cache[hash] ?: return null
+        if (clock() - entry.timestamp > duration) {
+            cache.remove(hash)
+            return null
+        }
+        return entry
+    }
+
+    @Synchronized
+    fun isCached(originalMessage: String): Boolean = get(originalMessage) != null
+
+    @Synchronized
+    fun clearAll() {
+        cache.clear()
+    }
+
+    @Synchronized
+    fun cleanExpired() {
+        val now = clock()
+        val expired = cache.entries.filter { now - it.value.timestamp > duration }
+        expired.forEach { cache.remove(it.key) }
+    }
+
+    @Synchronized
+    fun size(): Int = cache.size
+
+    /**
+     * Hashes the original message text for use as cache key.
+     * Using SHA-256 so we don't store the original encrypted text as a key.
+     */
+    private fun hashMessage(message: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(message.toByteArray(Charsets.UTF_8))
+        return hash.take(16).joinToString("") { "%02x".format(it) }
+    }
+}
+
+/**
+ * In-memory cache for decrypted messages.
+ * Avoids re-decrypting the same message when scrolling.
+ * Auto-clears after timeout. Never persisted to disk.
+ * Capped at 500 entries, LRU eviction.
+ */
+object DecryptCache {
+
+    private val store = DecryptCacheStore(maxEntries = 500)
 
     /**
      * Sets cache duration in minutes
      */
     fun setCacheDuration(minutes: Int) {
-        cacheDurationMs = minutes * 60 * 1000L
+        store.setDuration(minutes)
     }
 
     /**
@@ -31,12 +105,7 @@ object DecryptCache {
      * Key is a hash of the original encrypted message text
      */
     fun put(originalMessage: String, secretMessage: String, keyLabel: String) {
-        val hash = hashMessage(originalMessage)
-        cache[hash] = CacheEntry(
-            secretMessage = secretMessage,
-            keyLabel = keyLabel,
-            timestamp = System.currentTimeMillis()
-        )
+        store.put(originalMessage, secretMessage, keyLabel)
     }
 
     /**
@@ -44,15 +113,7 @@ object DecryptCache {
      * Returns null if not cached or expired
      */
     fun get(originalMessage: String): CachedResult? {
-        val hash = hashMessage(originalMessage)
-        val entry = cache[hash] ?: return null
-
-        // Check expiry
-        if (System.currentTimeMillis() - entry.timestamp > cacheDurationMs) {
-            cache.remove(hash)
-            return null
-        }
-
+        val entry = store.get(originalMessage) ?: return null
         return CachedResult(
             secretMessage = entry.secretMessage,
             keyLabel = entry.keyLabel
@@ -63,7 +124,7 @@ object DecryptCache {
      * Checks if a message is already cached (avoids re-processing)
      */
     fun isCached(originalMessage: String): Boolean {
-        return get(originalMessage) != null
+        return store.isCached(originalMessage)
     }
 
     /**
@@ -71,7 +132,7 @@ object DecryptCache {
      * Called on: Exchange Mode off, app switch, screen lock, panic
      */
     fun clearAll() {
-        cache.clear()
+        store.clearAll()
     }
 
     /**
@@ -79,25 +140,13 @@ object DecryptCache {
      * Called periodically by the accessibility service
      */
     fun cleanExpired() {
-        val now = System.currentTimeMillis()
-        val expired = cache.entries.filter { now - it.value.timestamp > cacheDurationMs }
-        expired.forEach { cache.remove(it.key) }
+        store.cleanExpired()
     }
 
     /**
      * Current cache size (for monitoring)
      */
-    fun size(): Int = cache.size
-
-    /**
-     * Hashes the original message text for use as cache key
-     * Using SHA-256 so we don't store the original encrypted text as a key
-     */
-    private fun hashMessage(message: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hash = digest.digest(message.toByteArray(Charsets.UTF_8))
-        return hash.take(16).joinToString("") { "%02x".format(it) }
-    }
+    fun size(): Int = store.size()
 
     data class CachedResult(
         val secretMessage: String,

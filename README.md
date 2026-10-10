@@ -65,9 +65,12 @@ Works across **some messaging app**: Telegram, Arattai, etc.,
 
 **Encryption**
 - AES-256-GCM authenticated encryption
-- Random IV per message (no pattern analysis possible)
+- Random IV per message (no IV reuse patterns)
+- Header (version + IV) authenticated via GCM AAD — tamper-evident
+- No key identifiers on the wire (v2); receiver tries stored keys
+- Best-effort replay deduplication of captured messages
 - 256-bit cryptographic keys
-- Key fingerprinting for multi-contact support
+- Key fingerprinting for local multi-contact support
 
 **Steganography**
 - 16 invisible Unicode characters for encoding
@@ -91,9 +94,9 @@ Works across **some messaging app**: Telegram, Arattai, etc.,
 
 **Key Management**
 - QR code key exchange (scan to add contacts)
-- PIN-protected key storage
+- Keys encrypted at rest (Android Keystore)
 - Password-protected backup/restore
-- 32-word recovery phrases
+- 33-word recovery phrases (last word is a checksum)
 - Multiple keys for different contacts
 
 **Additional Tools**
@@ -131,7 +134,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
    - Open Crypto Keyboard app
    - Key Management → Create New Key
    - Set a label (e.g., "Alice", "Work Group")
-   - Back up your 32-word recovery phrase
+   - Back up your 33-word recovery phrase (the last word is a checksum)
 
 3. **Exchange keys with contacts**
    - Show your QR code to contact
@@ -187,13 +190,21 @@ Message is encrypted, embedded, and sent automatically.
 | Key size | 256 bits |
 | IV | 96 bits, random per message |
 | Authentication tag | 128 bits (GCM) |
-| PIN protection | SHA-256, 10k iterations |
+| PIN protection | PBKDF2-HMAC-SHA256, 600k iterations, constant-time verify, exponential backoff after 5 failures |
 | Export encryption | PBKDF2-HMAC-SHA256, 100k iterations |
+| Replay protection | Per-device LRU dedup (2,000 entries, 30-day TTL, in-memory) — best-effort |
+| App lock | PBKDF2 PIN gate on keyboard show (never engages without a configured PIN) |
 
 ### Message Format
 
 ```
-[1 byte version][4 bytes key fingerprint][12 bytes IV][N bytes ciphertext + tag]
+Current (v2):
+[1 byte version=2][12 bytes IV][N bytes ciphertext + tag]
+— header (version + IV) authenticated via GCM AAD; no fingerprint on the wire;
+  receiver trial-decrypts against stored contacts (only the right key verifies)
+
+Legacy (v1, receive only):
+[1 byte version=1][4 bytes key fingerprint][12 bytes IV][N bytes ciphertext + tag]
 ```
 
 ### Steganographic Encoding
@@ -211,9 +222,10 @@ Signature markers (`U+2069 U+2068 U+2069 U+2068`) delimit the payload.
 
 ✅ **Passive surveillance** — Messages look innocent  
 ✅ **Server-side inspection** — Encrypted content is unreadable  
-✅ **Message tampering** — GCM authentication detects modifications  
+✅ **Message tampering** — GCM authentication detects modifications, header bound via AAD  
 ✅ **Shoulder surfing** — Cover message is what's visible  
-✅ **Forensic analysis** — Keys are PIN-encrypted on device
+✅ **Forensic analysis** — Keys encrypted at rest via Android Keystore  
+✅ **Verbatim message re-sends** — Best-effort duplicate detection (per device, in-memory)
 
 ### What This Doesn't Protect Against
 
@@ -221,6 +233,7 @@ Signature markers (`U+2069 U+2068 U+2069 U+2068`) delimit the payload.
 ❌ **Screen recording malware** — Can capture decrypted overlays  
 ❌ **Metadata** — Who you talk to, when, and frequency is visible  
 ❌ **Statistical analysis** — Sophisticated detection can identify steganography  
+❌ **Long-term replay protection** — The dedup cache is per-device and resets on restart; a second device that never saw the original still accepts a replay  
 ❌ **Quantum attacks** — Not post-quantum resistant (yet)
 
 ### Known Limitations
@@ -228,7 +241,9 @@ Signature markers (`U+2069 U+2068 U+2069 U+2068`) delimit the payload.
 ⚠️ **Not professionally audited** — Use for privacy, not life-or-death situations  
 ⚠️ **Platform dependent** — Some apps strip invisible characters (use compatibility tester)  
 ⚠️ **Message length limits** — Long secrets = many invisible chars (may hit app limits)  
-⚠️ **Accessibility permission** — Required for auto-decryption (broad access)
+⚠️ **Accessibility permission** — Required for auto-decryption (broad access)  
+⚠️ **Cover text is sanitized** — Zero-width characters (including emoji joiners) are stripped from covers before embedding, so they cannot corrupt the payload  
+⚠️ **Send replaces existing input** — The send path commits the ciphertext as a replacement of whatever text the target app's field already held
 
 ---
 

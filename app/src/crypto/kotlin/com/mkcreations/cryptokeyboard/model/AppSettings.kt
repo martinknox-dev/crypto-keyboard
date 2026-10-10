@@ -4,7 +4,7 @@ data class AppSettings(
     // Security
     val appLockEnabled: Boolean = false,
     val lockMethod: LockMethod = LockMethod.NONE,
-    val lockTimeoutSeconds: Int = 0,         // 0 = immediate
+    val lockTimeoutSeconds: Int = 300,     // seconds; SettingsStore defaults to 300 (<= 0 would disable relock)
     val pinHash: String = "",                // Stored as hash, never plain
 
     // Disguise

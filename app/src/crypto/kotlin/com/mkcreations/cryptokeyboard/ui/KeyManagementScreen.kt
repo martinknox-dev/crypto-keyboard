@@ -223,7 +223,7 @@ fun KeyManagementScreen() = FlorisScreen {
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("From Phrase (32 words)") },
+                        text = { Text("From Phrase (33 words)") },
                         onClick = {
                             showImportDropdown = false
                             showImportPhraseDialog = true
@@ -533,7 +533,7 @@ fun KeyManagementScreen() = FlorisScreen {
 
                         // Numbered phrase grid
                         Text(
-                            "Or share these 32 words:",
+                            "Or share these 33 words (the last word is a checksum):",
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp
                         )
@@ -585,14 +585,14 @@ fun KeyManagementScreen() = FlorisScreen {
                         ) {
                             Icon(Icons.Default.ContentCopy, contentDescription = "Copy")
                             Spacer(Modifier.width(8.dp))
-                            Text("Copy All 32 Words")
+                            Text("Copy All 33 Words")
                         }
 
                         // Share button
                         OutlinedButton(
                             onClick = {
                                 val phraseString = data.phrases.joinToString(" ")
-                                val shareText = "🔑 Cipher Key: ${data.keyLabel}\n\n$phraseString\n\nPaste these 32 words in Crypto Keyboard → Import → Phrase"
+                                val shareText = "🔑 Cipher Key: ${data.keyLabel}\n\n$phraseString\n\nPaste these 33 words in Crypto Keyboard → Import → Phrase"
                                 val intent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, shareText)
@@ -639,7 +639,7 @@ fun KeyManagementScreen() = FlorisScreen {
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = "Paste the 32 words you received from the other person.",
+                            text = "Paste the 33 words you received from the other person.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -653,7 +653,7 @@ fun KeyManagementScreen() = FlorisScreen {
                         OutlinedTextField(
                             value = importPhraseText,
                             onValueChange = { importPhraseText = it },
-                            label = { Text("Paste 32 words here") },
+                            label = { Text("Paste 33 words here (32 legacy also accepted)") },
                             minLines = 3,
                             maxLines = 6,
                             modifier = Modifier.fillMaxWidth()
@@ -671,10 +671,10 @@ fun KeyManagementScreen() = FlorisScreen {
                                         .map { it.lowercase().trim() }
                                         .filter { it.isNotEmpty() }
 
-                                    if (words.size != 32) {
+                                    if (words.size != 32 && words.size != 33) {
                                         Toast.makeText(
                                             context,
-                                            "Expected 32 words, got ${words.size}. Check and try again.",
+                                            "Expected 33 words (or 32 for legacy phrases), got ${words.size}. Check and try again.",
                                             Toast.LENGTH_LONG
                                         ).show()
                                         return@launch
@@ -684,7 +684,7 @@ fun KeyManagementScreen() = FlorisScreen {
                                     if (keyBytes == null) {
                                         Toast.makeText(
                                             context,
-                                            "Invalid phrase — some words are not recognized.",
+                                            "Invalid phrase — an unknown word or a failed checksum (a word is likely mistyped).",
                                             Toast.LENGTH_LONG
                                         ).show()
                                         return@launch
@@ -787,26 +787,30 @@ fun KeyManagementScreen() = FlorisScreen {
                         if (importFileData.isNotBlank() && importPassword.isNotBlank()) {
                             coroutineScope.launch {
                                 try {
-                                    val importedKey = withContext(Dispatchers.IO) {
+                                    val imported = withContext(Dispatchers.IO) {
                                         KeyExporter.importKey(importFileData, importPassword)
                                     }
-                                    if (importedKey != null) {
-                                        val finalKey = if (importKeyAlias.isNotBlank()) {
-                                            importedKey.copy(label = importKeyAlias)
-                                        } else {
-                                            importedKey
+                                    when (imported) {
+                                        is KeyExporter.ImportOutcome.Success -> {
+                                            val importedKey = imported.key
+                                            val finalKey = if (importKeyAlias.isNotBlank()) {
+                                                importedKey.copy(label = importKeyAlias)
+                                            } else {
+                                                importedKey
+                                            }
+                                            withContext(Dispatchers.IO) {
+                                                store.saveKey(finalKey)
+                                            }
+                                            refreshKeys()
+                                            showImportFileDialog = false
+                                            importFileData = ""
+                                            importPassword = ""
+                                            importKeyAlias = ""
+                                            Toast.makeText(context, "Key imported from file!", Toast.LENGTH_SHORT).show()
                                         }
-                                        withContext(Dispatchers.IO) {
-                                            store.saveKey(finalKey)
+                                        is KeyExporter.ImportOutcome.Failure -> {
+                                            Toast.makeText(context, imported.reason, Toast.LENGTH_LONG).show()
                                         }
-                                        refreshKeys()
-                                        showImportFileDialog = false
-                                        importFileData = ""
-                                        importPassword = ""
-                                        importKeyAlias = ""
-                                        Toast.makeText(context, "Key imported from file!", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(context, "Wrong password or invalid data.", Toast.LENGTH_LONG).show()
                                     }
                                 } catch (e: Exception) {
                                     Toast.makeText(context, "Import error: ${e.message}", Toast.LENGTH_LONG).show()
@@ -872,10 +876,10 @@ fun KeyManagementScreen() = FlorisScreen {
                                     val result = withContext(Dispatchers.IO) {
                                         KeyExporter.exportKey(keyToExport, exportPassword)
                                     }
-                                    if (result != null) {
-                                        exportedResult = result
-                                    } else {
-                                        Toast.makeText(context, "Export failed!", Toast.LENGTH_SHORT).show()
+                                    when (result) {
+                                        is KeyExporter.ExportOutcome.Success -> exportedResult = result.json
+                                        is KeyExporter.ExportOutcome.Failure ->
+                                            Toast.makeText(context, "Export failed: ${result.reason}", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             }
@@ -971,7 +975,7 @@ fun KeyManagementScreen() = FlorisScreen {
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        Text("Recovery Phrase (32 words):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Recovery Phrase (33 words):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
                         Spacer(modifier = Modifier.height(8.dp))
 
@@ -1014,7 +1018,7 @@ fun KeyManagementScreen() = FlorisScreen {
                         OutlinedButton(
                             onClick = {
                                 val phraseString = phrases.joinToString(" ")
-                                val shareText = "🔑 Cipher Key: ${key.label}\n\n$phraseString\n\nPaste these 32 words in Crypto Keyboard → Import → Phrase"
+                                val shareText = "🔑 Cipher Key: ${key.label}\n\n$phraseString\n\nPaste these 33 words in Crypto Keyboard → Import → Phrase"
                                 val intent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, shareText)

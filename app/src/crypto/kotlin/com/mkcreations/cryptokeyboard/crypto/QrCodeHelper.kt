@@ -9,7 +9,7 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.mkcreations.cryptokeyboard.model.CipherKey
 import com.mkcreations.cryptokeyboard.model.CoverStyle
 import org.json.JSONObject
-import android.util.Base64
+import java.util.Base64
 
 /**
  * Handles QR code generation and parsing for key exchange.
@@ -27,6 +27,11 @@ object QrCodeHelper {
 
     private const val QR_VERSION = 1
     private const val QR_TYPE = "ck"
+
+    sealed interface ParseOutcome {
+        data class Success(val key: CipherKey) : ParseOutcome
+        data class Failure(val reason: String) : ParseOutcome
+    }
 
     /**
      * Generates a QR code bitmap from a CipherKey.
@@ -70,39 +75,40 @@ object QrCodeHelper {
      * Parses a QR code payload string back into a CipherKey.
      *
      * @param payload The raw string from QR scan
-     * @return CipherKey or null if invalid
+     * @return ParseOutcome.Success with the key, or Failure with a reason
      */
-    fun parseQrPayload(payload: String): CipherKey? {
+    fun parseQrPayload(payload: String): ParseOutcome {
         return try {
             val json = JSONObject(payload)
 
             // Validate
-            if (json.optInt("v") != QR_VERSION) return null
-            if (json.optString("t") != QR_TYPE) return null
+            if (json.optInt("v") != QR_VERSION) return ParseOutcome.Failure("Not a crypto key QR")
+            if (json.optString("t") != QR_TYPE) return ParseOutcome.Failure("Not a crypto key QR")
 
             val label = json.getString("l")
             val keyBase64 = json.getString("k")
             val fingerprint = json.getString("f")
 
-            val keyBytes = Base64.decode(keyBase64, Base64.NO_WRAP)
-            if (keyBytes.size != 32) return null
+            val keyBytes = Base64.getDecoder().decode(keyBase64)
+            if (keyBytes.size != 32) return ParseOutcome.Failure("Key data invalid size")
 
             // Verify fingerprint matches
             val computedFingerprint = KeyGenerator.fingerprint(keyBytes)
-            if (computedFingerprint != fingerprint) return null
+            if (computedFingerprint != fingerprint) return ParseOutcome.Failure("Fingerprint mismatch")
 
-            CipherKey(
-                id = fingerprint,
-                label = label,
-                keyBytes = keyBytes,
-                createdAt = System.currentTimeMillis(),
-                lastUsedAt = 0L,
-                coverStyle = CoverStyle.RANDOM_CASUAL,
-                compatibleChars = emptyList()
+            ParseOutcome.Success(
+                CipherKey(
+                    id = fingerprint,
+                    label = label,
+                    keyBytes = keyBytes,
+                    createdAt = System.currentTimeMillis(),
+                    lastUsedAt = 0L,
+                    coverStyle = CoverStyle.RANDOM_CASUAL,
+                    compatibleChars = emptyList()
+                )
             )
         } catch (e: Exception) {
-            e.printStackTrace()
-            null
+            ParseOutcome.Failure("Malformed QR payload")
         }
     }
 
@@ -126,7 +132,7 @@ object QrCodeHelper {
             put("v", QR_VERSION)
             put("t", QR_TYPE)
             put("l", key.label)
-            put("k", Base64.encodeToString(key.keyBytes, Base64.NO_WRAP))
+            put("k", Base64.getEncoder().encodeToString(key.keyBytes))
             put("f", key.id)
         }
         return json.toString()

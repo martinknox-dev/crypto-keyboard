@@ -17,8 +17,6 @@ object SharedState {
     private const val KEY_CURRENT_APP = "current_app_package"
     private const val KEY_LAST_ACTIVITY = "last_activity_timestamp"
     private const val KEY_CRYPTO_MODE = "crypto_mode_active"
-    private const val KEY_PENDING_SECRET = "pending_secret_message"
-    private const val KEY_PENDING_COVER = "pending_cover_message"
     private const val KEY_ACCESSIBILITY_CONNECTED = "accessibility_connected"
 
     private var prefs: SharedPreferences? = null
@@ -77,20 +75,6 @@ object SharedState {
             prefs?.edit()?.putString(KEY_CURRENT_APP, value)?.apply()
         }
 
-    // --- Pending Messages (for crypto bar fields) ---
-
-    var pendingSecretMessage: String
-        get() = prefs?.getString(KEY_PENDING_SECRET, "") ?: ""
-        set(value) {
-            prefs?.edit()?.putString(KEY_PENDING_SECRET, value)?.apply()
-        }
-
-    var pendingCoverMessage: String
-        get() = prefs?.getString(KEY_PENDING_COVER, "") ?: ""
-        set(value) {
-            prefs?.edit()?.putString(KEY_PENDING_COVER, value)?.apply()
-        }
-
     // --- Accessibility Service Connection ---
 
     var isAccessibilityConnected: Boolean
@@ -118,12 +102,5 @@ object SharedState {
 
     fun resetAll() {
         prefs?.edit()?.clear()?.apply()
-    }
-
-    fun clearPendingMessages() {
-        prefs?.edit()
-            ?.remove(KEY_PENDING_SECRET)
-            ?.remove(KEY_PENDING_COVER)
-            ?.apply()
     }
 }

@@ -25,5 +25,14 @@
                 android:resource="@xml/accessibility_config" />
         </service>
 
+        <!-- App lock PIN gate, launched on keyboard show when locked -->
+        <activity
+            android:name="com.mkcreations.cryptokeyboard.ui.AppLockActivity"
+            android:exported="false"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
     </application>
 </manifest>

@@ -5,6 +5,7 @@ package dev.patrickgold.florisboard.ime.text
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.inputmethod.EditorInfo
@@ -74,6 +75,9 @@ object CryptoBarHook {
     private var exchangeModeSetter: java.lang.reflect.Method? = null
     private var accessibilityServiceClass: Class<*>? = null
 
+    private var appContext: Context? = null
+    private var lockPromptShowing = false
+
     val isCryptoModeActive: Boolean get() = _isCryptoModeActive.value
     val isCapturingInput: Boolean get() = _isCryptoModeActive.value && _activeField.value != CryptoField.NONE
 
@@ -82,6 +86,7 @@ object CryptoBarHook {
     }
 
     fun initialize(context: Context) {
+        appContext = context.applicationContext
         if (_isInitialized) return
         try {
             sharedStateClass = Class.forName("com.mkcreations.cryptokeyboard.core.SharedState")
@@ -208,10 +213,14 @@ object CryptoBarHook {
             refreshAllKeys()
             _isExchangeModeActive.value = exchangeModeGetter?.invoke(sharedStateInstance) as? Boolean ?: false
         } catch (e: Exception) {}
+        maybeLaunchAppLock()
     }
 
     fun onKeyboardHide() {
         if (!_isInitialized) return
+        // lockPromptShowing is intentionally NOT reset here: hiding the IME
+        // while the lock prompt launches must not re-arm a relaunch (loop
+        // risk). It re-arms via onAppLockClosed() and when the lock disengages.
         _activeField.value = CryptoField.NONE
         _showKeySelector.value = false
         try {
@@ -220,7 +229,42 @@ object CryptoBarHook {
         } catch (e: Exception) {}
     }
 
+    /**
+     * Shows the PIN gate when the app lock has engaged. Reflective so this
+     * file (main source set) can reference the crypto-flavor classes; on the
+     * floris flavor the classes are absent and the call is a no-op.
+     */
+    private fun maybeLaunchAppLock() {
+        val ctx = appContext ?: return
+        try {
+            val storeClass = Class.forName("com.mkcreations.cryptokeyboard.storage.SettingsStore")
+            val getInstance = storeClass.getMethod("getInstance", Context::class.java)
+            val store = getInstance.invoke(null, ctx)
+            val locked = storeClass.getMethod("isAppLocked").invoke(store) as? Boolean ?: false
+            if (!locked) {
+                lockPromptShowing = false // lock released — arm for the next engagement
+                return
+            }
+            if (lockPromptShowing) return // prompt already alive (singleTop absorbs repeats)
+            val intent = Intent(ctx, Class.forName("com.mkcreations.cryptokeyboard.ui.AppLockActivity"))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(intent)
+            lockPromptShowing = true
+        } catch (e: ClassNotFoundException) {
+            // floris flavor — no crypto app lock
+        } catch (e: Exception) {
+            Log.e(TAG, "App lock launch failed", e)
+        }
+    }
+
+    /** Called by AppLockActivity.onDestroy so the launch guard re-arms. */
+    fun onAppLockClosed() {
+        lockPromptShowing = false
+    }
+
     fun destroy() {
+        appContext = null
+        lockPromptShowing = false
         sharedStateInstance = null
         sharedStateClass = null
         cryptoInputManagerInstance = null
@@ -690,7 +734,7 @@ private fun ExpandedCryptoBar() {
 
     val estimatedSize = remember(secretMessage) {
         if (secretMessage.isEmpty()) 0
-        else 1 + 4 + 12 + secretMessage.toByteArray(Charsets.UTF_8).size + 16
+        else 1 + 12 + secretMessage.toByteArray(Charsets.UTF_8).size + 16
     }
     val invisibleChars = estimatedSize * 2
     val totalChars = invisibleChars + coverMessage.length + 8

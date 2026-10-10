@@ -56,9 +56,9 @@ When reporting a security issue, please provide:
 
 - **Passive surveillance** — Message content is encrypted
 - **Server-side inspection** — Servers see only cover messages
-- **Message tampering** — GCM authentication detects modifications
-- **Replay attacks** — Random IV prevents replaying old messages
-- **Casual forensics** — Keys are PIN-encrypted on device
+- **Message tampering** — GCM authentication detects modifications; the header (version + IV) is bound as AAD so it cannot be altered undetected
+- **Verbatim message re-sends** — Best-effort: a per-device, in-memory LRU (2,000 entries, 30-day TTL) rejects payloads it has already decrypted. This is NOT a session ratchet: a device restart, cache clear, or a second device that never saw the original will still accept the replay
+- **Casual forensics** — Keys encrypted at rest via Android Keystore (the app-lock PIN gates the keyboard UI, it does not encrypt keys)
 - **Shoulder surfing** — Decrypted content hidden until Exchange Mode active
 
 #### What This Does NOT Protect Against ❌
@@ -68,7 +68,8 @@ When reporting a security issue, please provide:
 - **Physical device access** — Unlocked device = full access
 - **Keyloggers** — Can capture messages before encryption
 - **Metadata analysis** — Who you talk to, when, how often
-- **Advanced traffic analysis** — Timing, message length patterns
+- **Advanced traffic analysis** — Timing, message length patterns. v2 messages carry no key identifier; legacy v1 messages (receive path only) still contain a 4-byte fingerprint and remain clusterable
+- **Replay from another device** — The dedup cache is per-device and in-memory only
 - **Quantum computing** — Not post-quantum resistant
 - **Rubber-hose cryptanalysis** — Physical coercion to reveal keys
 
@@ -94,11 +95,31 @@ If any assumption is violated, security guarantees are void.
 |-----------|-----------|------------|
 | **Symmetric encryption** | AES-256-GCM | 256-bit key, 96-bit IV, 128-bit tag |
 | **Key generation** | SecureRandom | 256 bits |
-| **Key fingerprinting** | SHA-256 | First 4 bytes (32 bits) |
-| **PIN hashing** | SHA-256 | 10,000 iterations, random 16-byte salt |
+| **Key fingerprinting** | SHA-256 | First 4 bytes (32 bits); local key identifier only — never sent in v2 |
+| **PIN hashing** | PBKDF2-HMAC-SHA256 | 600,000 iterations, random 16-byte salt, constant-time compare |
 | **Export encryption** | PBKDF2-HMAC-SHA256 | 100,000 iterations, random 16-byte salt |
 
 ### Message Format
+
+Current (v2):
+
+```
+┌────────┬──────┬─────────────────────────┐
+│Version │  IV  │ Ciphertext + Auth Tag   │
+│ 1 byte │12 by │     Variable length     │
+└────────┴──────┴─────────────────────────┘
+```
+
+**Version (1 byte):** Protocol version (`0x02`)
+**IV (12 bytes):** Random initialization vector (96 bits for GCM)
+**Ciphertext + Tag:** AES-GCM output (plaintext + 16-byte authentication tag)
+
+The version byte and IV are fed to GCM as associated data (AAD), so any
+modification of the header fails authentication. No key identifier appears
+on the wire: the receiver trial-decrypts the payload against each stored
+contact key, and only the correct key produces a valid tag.
+
+Legacy (v1, receive only — encryption always emits v2):
 
 ```
 ┌────────┬─────────────┬──────┬─────────────────────────┐
@@ -107,10 +128,9 @@ If any assumption is violated, security guarantees are void.
 └────────┴─────────────┴──────┴─────────────────────────┘
 ```
 
-**Version (1 byte):** Protocol version (currently `0x01`)  
-**Fingerprint (4 bytes):** First 4 bytes of SHA-256(key) — identifies which key to use  
-**IV (12 bytes):** Random initialization vector (96 bits for GCM)  
-**Ciphertext + Tag:** AES-GCM output (plaintext + 16-byte authentication tag)
+**Fingerprint (4 bytes):** First 4 bytes of SHA-256(key) — identifies which
+key to use. v1 messages are still fully decryptable, but this field reveals
+a static per-contact identifier to anyone observing the message.
 
 ### Steganographic Encoding
 
@@ -173,17 +193,25 @@ Keys are stored using Android Keystore when available:
 
 #### PIN Protection
 
-User PINs protect keys using:
+The app-lock PIN is hashed with PBKDF2:
 
 ```
 salt = random(16 bytes)
-iterations = 10,000
-derived_key = SHA256^iterations(PIN + salt)
-encrypted_key = AES-256-GCM(key_bytes, derived_key)
-stored = salt || encrypted_key
+iterations = 600,000
+derived_key = PBKDF2-HMAC-SHA256(PIN, salt, iterations)
+stored = "pbkdf2$600000$" || base64(salt) || "$" || base64(derived_key)
 ```
 
-**Why 10k iterations:** Balance between security and UX (instant unlock feel)
+- Verification compares via `MessageDigest.isEqual` (constant time).
+- Failed attempts are rate-limited with exponential backoff: the first
+  5 attempts are immediate, then 5s, 10s, 20s… capped at 5 minutes.
+  The counter and lockout deadline persist across restarts.
+- The keyboard-show lifecycle checks the lock and presents a PIN gate;
+  the lock never engages unless a PIN is actually configured, so a
+  panic-triggered lock without a PIN cannot brick input.
+
+**Why 600k iterations:** OWASP-aligned PBKDF2-HMAC-SHA256 work factor;
+the delay is paid only on unlock, not per message.
 
 #### Export/Import
 
@@ -255,9 +283,24 @@ encrypted_export = AES-256-GCM(key_data, derived_key)
    - Mitigation: Minimize lifetime of sensitive objects
 
 4. **Timing attacks**
-   - PIN verification uses constant-time comparison
+   - PIN verification uses constant-time comparison (`MessageDigest.isEqual`)
    - But decryption errors may leak timing info
    - Mitigation: Decryption fails silently (no error details)
+
+5. **Cover text sanitization**
+   - Zero-width encoding characters and markers are stripped from cover text
+     before embedding, so pasted invisible characters cannot corrupt payloads
+   - Side effect: emoji joiners (U+200D) in covers are removed, which can
+     split combined emoji sequences (e.g. family emoji)
+
+6. **Send path replaces existing input**
+   - The one-tap send commits the ciphertext as a replacement of any text the
+     target app's input field already held (batched with the commit)
+   - Mitigation: Product decision pending on replace-vs-append semantics
+
+7. **Small cover pool**
+   - The cover generator uses a limited set of templates; an observer who
+     knows the pool can recognize candidate messages by cover phrasing
 
 ---
 

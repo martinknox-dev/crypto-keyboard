@@ -40,51 +40,58 @@ object ScreenScanner {
         if (results.size >= 15) return
 
         try {
-            val text = node.text?.toString()
-            if (!text.isNullOrEmpty() && text.length > 8) {
-                if (InvisibleEncoder.containsHiddenData(text)) {
-                    val bounds = Rect()
-                    node.getBoundsInScreen(bounds)
+            // Never read password/PIN fields (spec: skip isPassword + password-like hints)
+            val hint = node.hintText?.toString()
+            val skip = SensitiveNodeFilter.shouldSkip(node.isPassword, node.className?.toString(), hint)
 
-                    if (bounds.width() > 0 && bounds.height() > 0) {
-                        val parentBounds = getParentBounds(node)
-                        val nodeId = generateNodeId(text, bounds)
+            if (!skip) {
+                val text = node.text?.toString()
+                if (!text.isNullOrEmpty() && text.length > 8) {
+                    if (InvisibleEncoder.containsHiddenData(text)) {
+                        val bounds = Rect()
+                        node.getBoundsInScreen(bounds)
 
-                        results.add(
-                            EncryptedNode(
-                                nodeId = nodeId,
-                                fullText = text,
-                                bounds = bounds,
-                                parentBounds = parentBounds
+                        if (bounds.width() > 0 && bounds.height() > 0) {
+                            val parentBounds = getParentBounds(node)
+                            val nodeId = generateNodeId(text, bounds)
+
+                            results.add(
+                                EncryptedNode(
+                                    nodeId = nodeId,
+                                    fullText = text,
+                                    bounds = bounds,
+                                    parentBounds = parentBounds
+                                )
                             )
-                        )
+                        }
+                    }
+                }
+
+                // Also check content description
+                val contentDesc = node.contentDescription?.toString()
+                if (!contentDesc.isNullOrEmpty() && contentDesc.length > 8) {
+                    if (InvisibleEncoder.containsHiddenData(contentDesc)) {
+                        val bounds = Rect()
+                        node.getBoundsInScreen(bounds)
+
+                        if (bounds.width() > 0 && bounds.height() > 0) {
+                            val parentBounds = getParentBounds(node)
+                            val nodeId = generateNodeId(contentDesc, bounds)
+
+                            results.add(
+                                EncryptedNode(
+                                    nodeId = nodeId,
+                                    fullText = contentDesc,
+                                    bounds = bounds,
+                                    parentBounds = parentBounds
+                                )
+                            )
+                        }
                     }
                 }
             }
 
-            // Also check content description
-            val contentDesc = node.contentDescription?.toString()
-            if (!contentDesc.isNullOrEmpty() && contentDesc.length > 8) {
-                if (InvisibleEncoder.containsHiddenData(contentDesc)) {
-                    val bounds = Rect()
-                    node.getBoundsInScreen(bounds)
-
-                    if (bounds.width() > 0 && bounds.height() > 0) {
-                        val parentBounds = getParentBounds(node)
-                        val nodeId = generateNodeId(contentDesc, bounds)
-
-                        results.add(
-                            EncryptedNode(
-                                nodeId = nodeId,
-                                fullText = contentDesc,
-                                bounds = bounds,
-                                parentBounds = parentBounds
-                            )
-                        )
-                    }
-                }
-            }
-
+            // Child traversal stays unguarded (children may still contain visible messages)
             val childCount = node.childCount.coerceAtMost(30)
             for (i in 0 until childCount) {
                 val child = node.getChild(i) ?: continue
@@ -128,14 +135,20 @@ object ScreenScanner {
         if (depth > 10) return false
 
         try {
-            val text = node.text?.toString()
-            if (!text.isNullOrEmpty() && text.length > 8) {
-                if (InvisibleEncoder.containsHiddenData(text)) return true
-            }
+            val hint = node.hintText?.toString()
+            val skip = SensitiveNodeFilter.shouldSkip(node.isPassword, node.className?.toString(), hint)
+            if (skip) {
+                // Do not read this node; children are still traversed below
+            } else {
+                val text = node.text?.toString()
+                if (!text.isNullOrEmpty() && text.length > 8) {
+                    if (InvisibleEncoder.containsHiddenData(text)) return true
+                }
 
-            val contentDesc = node.contentDescription?.toString()
-            if (!contentDesc.isNullOrEmpty() && contentDesc.length > 8) {
-                if (InvisibleEncoder.containsHiddenData(contentDesc)) return true
+                val contentDesc = node.contentDescription?.toString()
+                if (!contentDesc.isNullOrEmpty() && contentDesc.length > 8) {
+                    if (InvisibleEncoder.containsHiddenData(contentDesc)) return true
+                }
             }
 
             for (i in 0 until node.childCount.coerceAtMost(15)) {
