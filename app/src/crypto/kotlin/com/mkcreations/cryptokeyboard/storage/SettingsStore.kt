@@ -53,15 +53,10 @@ class SettingsStore(context: Context) {
             putBoolean("auto_enable_exchange", settings.autoEnableExchange)
             putBoolean("smart_key_selection", settings.smartKeySelection)
 
-            // Panic
-            putBoolean("panic_enabled", settings.panicEnabled)
-            putString("panic_trigger", settings.panicTrigger.name)
-            putBoolean("panic_switch_keyboard", settings.panicSwitchKeyboard)
-            putBoolean("panic_disable_exchange", settings.panicDisableExchange)
-            putBoolean("panic_remove_overlays", settings.panicRemoveOverlays)
-            putBoolean("panic_clear_cache", settings.panicClearCache)
-            putBoolean("panic_lock_app", settings.panicLockApp)
-            putBoolean("panic_clear_keys", settings.panicClearKeys)
+            // Panic (new independent-trigger schema; legacy keys are
+            // migrated on read by PanicSettingsCodec and never rewritten)
+            com.mkcreations.cryptokeyboard.core.PanicSettingsCodec.encode(settings)
+                .forEach { (key, value) -> putBoolean(key, value) }
 
             // Battery
             putInt("idle_timeout", settings.idleTimeoutMinutes)
@@ -74,7 +69,7 @@ class SettingsStore(context: Context) {
     }
 
     fun loadSettings(): AppSettings {
-        return AppSettings(
+        val base = AppSettings(
             // Security
             appLockEnabled = prefs.getBoolean("app_lock_enabled", false),
             lockMethod = enumValueOrDefault("lock_method", LockMethod.NONE),
@@ -93,22 +88,14 @@ class SettingsStore(context: Context) {
             autoEnableExchange = prefs.getBoolean("auto_enable_exchange", false),
             smartKeySelection = prefs.getBoolean("smart_key_selection", true),
 
-            // Panic
-            panicEnabled = prefs.getBoolean("panic_enabled", false),
-            panicTrigger = enumValueOrDefault("panic_trigger", PanicTrigger.SHAKE),
-            panicSwitchKeyboard = prefs.getBoolean("panic_switch_keyboard", true),
-            panicDisableExchange = prefs.getBoolean("panic_disable_exchange", true),
-            panicRemoveOverlays = prefs.getBoolean("panic_remove_overlays", true),
-            panicClearCache = prefs.getBoolean("panic_clear_cache", true),
-            panicLockApp = prefs.getBoolean("panic_lock_app", false),
-            panicClearKeys = prefs.getBoolean("panic_clear_keys", false),
-
             // Battery
             idleTimeoutMinutes = prefs.getInt("idle_timeout", 3),
             maxOverlays = prefs.getInt("max_overlays", 15),
             cacheDurationMinutes = prefs.getInt("cache_duration", 5),
             animationLevel = enumValueOrDefault("animation_level", AnimationLevel.FULL)
         )
+        // Panic block: new schema with deterministic legacy migration.
+        return com.mkcreations.cryptokeyboard.core.PanicSettingsCodec.decode(prefs.all, base)
     }
 
     fun isFirstLaunch(): Boolean {
@@ -133,6 +120,22 @@ class SettingsStore(context: Context) {
 
     fun recordUnlock() {
         prefs.edit().putLong("last_unlock_time", System.currentTimeMillis()).apply()
+    }
+
+    /**
+     * Forces the next [isAppLocked] check to report locked (panic path).
+     * The lock only engages when app lock is enabled and a PIN exists —
+     * AppLockPolicy never locks without a PIN — so the enable flag is only
+     * re-asserted when a PIN is actually configured.
+     */
+    fun forceRelock() {
+        val editor = prefs.edit().putLong("last_unlock_time", 0L)
+        if (prefs.getString("pin_hash", "")?.isNotEmpty() == true) {
+            editor.putBoolean("app_lock_enabled", true)
+        }
+        // commit(): the lock must hit disk before any subsequent IME switch
+        // or process death can skip it.
+        editor.commit()
     }
 
     /** Sets the app-lock PIN, enabling the lock. Resets any backoff from the

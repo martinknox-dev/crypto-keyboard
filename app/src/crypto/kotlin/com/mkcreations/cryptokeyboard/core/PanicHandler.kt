@@ -5,11 +5,11 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.view.inputmethod.InputMethodManager
+import android.util.Log
 // Removed old AccessibilityService import
 import com.mkcreations.cryptokeyboard.crypto.DecryptCache
 import com.mkcreations.cryptokeyboard.crypto.ReplayGuard
-import com.mkcreations.cryptokeyboard.model.PanicTrigger
+import com.mkcreations.cryptokeyboard.model.AppSettings
 import com.mkcreations.cryptokeyboard.storage.SecureKeyStore
 import com.mkcreations.cryptokeyboard.storage.SettingsStore
 import kotlin.math.sqrt
@@ -18,7 +18,12 @@ class PanicHandler(private val context: Context) : SensorEventListener {
 
     private var sensorManager: SensorManager? = null
     private var accelerometer: Sensor? = null
+    private var proximitySensor: Sensor? = null
     private var isListening = false
+
+    // Face-down = downward tilt AND proximity covered (edge-triggered)
+    private val faceDownDetector = FaceDownDetector()
+    private val faceDownZThreshold = -6.0f   // screen pointing down (z axis points out of the screen)
 
     // Shake detection
     private var lastShakeTime = 0L
@@ -26,6 +31,15 @@ class PanicHandler(private val context: Context) : SensorEventListener {
     private val SHAKE_THRESHOLD = 15.0f
     private val SHAKE_RESET_TIME = 1500L     // Reset count after 1.5s
     private val SHAKE_REQUIRED_COUNT = 3      // 3 shakes to trigger
+    // Diagnostics: log the strongest shake peak seen per reset window (rate-limited)
+    private var shakePeakLoggedAt = 0L
+    private var shakePeakSinceLog = 0f
+
+    // Sensor callbacks fire up to ~200x/s: never re-read (and decrypt) the
+    // whole preference store per event — the service refreshes this snapshot
+    // whenever settings change (PanicSettingsScreen → refreshPanicTriggers).
+    @Volatile
+    private var currentSettings: AppSettings? = null
 
     // Callbacks
     private var onPanicTriggered: (() -> Unit)? = null
@@ -34,28 +48,27 @@ class PanicHandler(private val context: Context) : SensorEventListener {
         onPanicTriggered = callback
     }
 
-    fun startListening(trigger: PanicTrigger) {
+    /** Registers only the sensors the current configuration needs. */
+    fun startListening(settings: AppSettings) {
+        currentSettings = settings
         if (isListening) stopListening()
-
-        when (trigger) {
-            PanicTrigger.SHAKE -> startShakeDetection()
-            PanicTrigger.SCREEN_DOWN -> startOrientationDetection()
-            PanicTrigger.POWER_BUTTON -> {
-                // Power button detection requires screen off broadcast
-                // Handled separately in service
-            }
-            PanicTrigger.VOLUME_UP -> {
-                // Volume button detection handled in keyboard service
-            }
-        }
+        if (PanicConfig.usesAccelerometer(settings)) startAccelerometer()
+        if (PanicConfig.usesProximity(settings)) startProximity()
     }
 
     fun stopListening() {
         sensorManager?.unregisterListener(this)
+        accelerometer = null
+        proximitySensor = null
         isListening = false
     }
 
-    private fun startShakeDetection() {
+    /** External triggers (volume sequence, spacebar gestures) enter here. */
+    fun triggerPanic() {
+        executePanic()
+    }
+
+    private fun startAccelerometer() {
         sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         if (accelerometer != null) {
@@ -65,35 +78,59 @@ class PanicHandler(private val context: Context) : SensorEventListener {
                 SensorManager.SENSOR_DELAY_UI
             )
             isListening = true
+            Log.d("CryptoPanic", "accelerometer registered (shake/tilt triggers active)")
+        } else {
+            Log.w("CryptoPanic", "NO accelerometer on this device — shake/face-down cannot fire")
         }
     }
 
-    private fun startOrientationDetection() {
+    private fun startProximity() {
         sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        if (accelerometer != null) {
+        proximitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
+        if (proximitySensor != null) {
             sensorManager?.registerListener(
                 this,
-                accelerometer,
+                proximitySensor,
                 SensorManager.SENSOR_DELAY_NORMAL
             )
             isListening = true
+            Log.d("CryptoPanic", "proximity registered (face-down trigger active)")
+        } else {
+            Log.w("CryptoPanic", "NO proximity sensor on this device — face-down cannot fire")
         }
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type != Sensor.TYPE_ACCELEROMETER) return
+        when (event?.sensor?.type) {
+            Sensor.TYPE_ACCELEROMETER -> onAccelerometerEvent(event)
+            Sensor.TYPE_PROXIMITY -> onProximityEvent(event)
+        }
+    }
 
+    private fun onAccelerometerEvent(event: SensorEvent) {
         val x = event.values[0]
         val y = event.values[1]
         val z = event.values[2]
 
-        val settings = SettingsStore.getInstance(context).loadSettings()
+        val settings = currentSettings ?: return
+        if (!PanicConfig.isArmed(settings)) return
 
-        when (settings.panicTrigger) {
-            PanicTrigger.SHAKE -> detectShake(x, y, z)
-            PanicTrigger.SCREEN_DOWN -> detectScreenDown(z)
-            else -> {}
+        if (settings.panicTriggerShake) detectShake(x, y, z)
+        if (settings.panicTriggerFaceDown) {
+            val faceDownNow = z < faceDownZThreshold
+            if (faceDownDetector.onTilt(faceDownNow, System.currentTimeMillis())) {
+                executePanic()
+            }
+        }
+    }
+
+    private fun onProximityEvent(event: SensorEvent) {
+        val settings = currentSettings ?: return
+        if (!PanicConfig.isArmed(settings) || !settings.panicTriggerFaceDown) return
+        val sensor = proximitySensor ?: return
+        val near = event.values[0] < sensor.maximumRange / 2f
+        if (faceDownDetector.onProximityNear(near, System.currentTimeMillis())) {
+            executePanic()
         }
     }
 
@@ -105,6 +142,21 @@ class PanicHandler(private val context: Context) : SensorEventListener {
         // Calculate acceleration magnitude (minus gravity)
         val magnitude = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
         val acceleration = magnitude - SensorManager.GRAVITY_EARTH
+
+        // Diagnostics: track the strongest peak so on-device logs show whether
+        // shakes are reaching the threshold (emulators often report a flat
+        // accelerometer, so no real shake can ever be detected there).
+        if (acceleration > shakePeakSinceLog) shakePeakSinceLog = acceleration
+        val nowForLog = System.currentTimeMillis()
+        if (nowForLog - shakePeakLoggedAt > SHAKE_RESET_TIME) {
+            Log.d(
+                "CryptoPanic",
+                "shake: peak=$shakePeakSinceLog threshold=$SHAKE_THRESHOLD " +
+                    "count=$shakeCount"
+            )
+            shakePeakSinceLog = 0f
+            shakePeakLoggedAt = nowForLog
+        }
 
         if (acceleration > SHAKE_THRESHOLD) {
             val now = System.currentTimeMillis()
@@ -123,59 +175,52 @@ class PanicHandler(private val context: Context) : SensorEventListener {
         }
     }
 
-    private fun detectScreenDown(zAcceleration: Float) {
-        // When phone is face down, z-axis shows negative gravity
-        if (zAcceleration > 8.0f) { // Phone is face down (z > ~8 m/s² means gravity pulling from top)
-            executePanic()
-        }
-    }
-
     private fun executePanic() {
-        val settings = SettingsStore.getInstance(context).loadSettings()
+        val settings = currentSettings
+            ?: SettingsStore.getInstance(context).loadSettings()
+        // The master switch may have been turned off after registration.
+        if (!PanicConfig.isArmed(settings)) return
 
-        // Step 1: Remove all overlays (instant)
-        if (settings.panicRemoveOverlays) {
+        for (action in PanicActionPlan.actions(settings)) {
             try {
-                com.mkcreations.cryptokeyboard.accessibility.OverlayManager.removeAllActiveOverlays()
+                when (action) {
+                    // Overlays + exchange off: both stop the visible bubble flow.
+                    PanicAction.REMOVE_OVERLAYS -> {
+                        com.mkcreations.cryptokeyboard.accessibility.OverlayManager
+                            .removeAllActiveOverlays()
+                        SharedState.isExchangeModeActive = false
+                    }
+                    // Flush plaintext caches and force the app to relock.
+                    PanicAction.CLEAR_CACHE_AND_LOCK -> {
+                        DecryptCache.clearAll()
+                        ReplayGuard.shared.clear()
+                        SettingsStore.getInstance(context).forceRelock()
+                    }
+                    PanicAction.SWITCH_IME -> switchKeyboard()
+                    // DANGEROUS — user opted in via the confirmation dialog.
+                    PanicAction.WIPE_KEYS -> {
+                        SecureKeyStore.getInstance(context).deleteAllKeys()
+                    }
+                }
             } catch (e: Exception) {
-                // Overlay removal is best-effort during panic
+                // Panic actions are best-effort; keep executing the rest.
             }
-        }
-
-        // Step 2: Clear cache (plaintext) and the replay dedup state
-        if (settings.panicClearCache) {
-            DecryptCache.clearAll()
-            ReplayGuard.shared.clear()
-        }
-
-        // Step 3: Disable exchange mode
-        if (settings.panicDisableExchange) {
-            SharedState.isExchangeModeActive = false
-        }
-
-        // Step 4: Switch keyboard
-        if (settings.panicSwitchKeyboard) {
-            try {
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                imm.showInputMethodPicker()
-            } catch (e: Exception) {
-                // May not work from all contexts
-            }
-        }
-
-        // Step 5: Lock app
-        if (settings.panicLockApp) {
-            SettingsStore.getInstance(context).saveSettings(
-                settings.copy(appLockEnabled = true)
-            )
-        }
-
-        // Step 6: Clear all keys (DANGEROUS — user opted in)
-        if (settings.panicClearKeys) {
-            SecureKeyStore.getInstance(context).deleteAllKeys()
         }
 
         // Notify callback
         onPanicTriggered?.invoke()
+    }
+
+    /**
+     * Switches back to the previously used IME when our keyboard service is
+     * alive. If no previous IME can be switched to (our IME not running, or no
+     * other IME enabled), this does nothing rather than falling back to the IME
+     * picker — the user explicitly wants a silent switch back to the previous
+     * keyboard, never an unrelated picker dialog.
+     */
+    private fun switchKeyboard() {
+        val switched =
+            dev.patrickgold.florisboard.FlorisImeService.switchToPrevInputMethod()
+        Log.d("CryptoPanic", "switchKeyboard: switchedToPrevious=$switched")
     }
 }

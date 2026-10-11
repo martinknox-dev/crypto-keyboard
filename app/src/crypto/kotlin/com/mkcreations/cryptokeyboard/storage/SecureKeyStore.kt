@@ -82,11 +82,14 @@ class SecureKeyStore(context: Context) {
     }
 
     fun deleteAllKeys() {
+        // commit(), not apply(): this path's contract is "the data is gone",
+        // and the panic flow can switch IMEs / get the process killed right
+        // after — an async disk write could be dropped.
         prefs.edit()
             .remove(KEYS_LIST)
             .remove(ACTIVE_KEY_ID)
             .remove(KEY_CHAT_MAP)
-            .apply()
+            .commit()
     }
 
     fun keyCount(): Int = getAllKeys().size

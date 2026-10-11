@@ -19,6 +19,7 @@ package dev.patrickgold.florisboard.app
 import androidx.navigation.NavGraphBuilder
 import com.mkcreations.cryptokeyboard.ui.CryptoSettingsScreen
 import com.mkcreations.cryptokeyboard.ui.KeyManagementScreen
+import com.mkcreations.cryptokeyboard.ui.PanicSettingsScreen
 
 /** Whether the CryptoBoard settings entry is part of this build. */
 const val CryptoSettingsAvailable = true
@@ -27,4 +28,5 @@ const val CryptoSettingsAvailable = true
 fun NavGraphBuilder.addCryptoRoutes() {
     composableWithDeepLink(Routes.Settings.Crypto::class) { CryptoSettingsScreen() }
     composableWithDeepLink(Routes.Settings.KeyManagement::class) { KeyManagementScreen() }
+    composableWithDeepLink(Routes.Settings.PanicSettings::class) { PanicSettingsScreen() }
 }

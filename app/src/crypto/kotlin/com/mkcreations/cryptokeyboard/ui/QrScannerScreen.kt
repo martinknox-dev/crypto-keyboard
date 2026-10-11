@@ -1,7 +1,14 @@
 package com.mkcreations.cryptokeyboard.ui
 
 import android.Manifest
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import android.util.Size
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -33,7 +40,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
@@ -69,6 +79,11 @@ fun QrScannerScreen(
     }
 
     var hasScanned by remember { mutableStateOf(false) }
+    // State precision: only treat the permission as blocked after a real
+    // request attempt — "rationale == false" before any dialog was ever
+    // shown means "never asked", not "permanently blocked".
+    var hasAttemptedRequest by remember { mutableStateOf(false) }
+    var permissionBlocked by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
     var flashEnabled by remember { mutableStateOf(false) }
     var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
@@ -76,7 +91,14 @@ fun QrScannerScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        permissionState = if (granted) PermissionState.GRANTED else PermissionState.DENIED
+        hasAttemptedRequest = true
+        if (granted) {
+            permissionBlocked = false
+            permissionState = PermissionState.GRANTED
+        } else {
+            permissionBlocked = computePermissionBlocked(context, hasAttemptedRequest = true)
+            permissionState = PermissionState.DENIED
+        }
     }
 
     // Auto-request permission on first open if not already granted
@@ -85,6 +107,39 @@ fun QrScannerScreen(
             permissionState = PermissionState.REQUESTING
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
+    }
+
+    // Seamless resume: re-check the real permission status whenever the
+    // screen comes back to the foreground. Granted in the app's Settings
+    // page → jump straight into the camera preview; revoked → back to the
+    // denied screen with a freshly computed blocked-state. An in-flight
+    // request keeps waiting for its launcher callback instead of racing it.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val granted = ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.CAMERA
+                ) == PackageManager.PERMISSION_GRANTED
+                when {
+                    granted -> {
+                        permissionBlocked = false
+                        permissionState = PermissionState.GRANTED
+                    }
+                    permissionState == PermissionState.GRANTED -> {
+                        permissionBlocked = computePermissionBlocked(context, hasAttemptedRequest)
+                        permissionState = PermissionState.DENIED
+                    }
+                    permissionState == PermissionState.REQUESTING -> {
+                        // Dialog still deciding — the launcher callback decides.
+                    }
+                    else -> {
+                        permissionBlocked = computePermissionBlocked(context, hasAttemptedRequest)
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -267,17 +322,29 @@ fun QrScannerScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Camera access is needed to scan QR codes.\nGrant permission and try again.",
+                        text = if (permissionBlocked) {
+                            "Camera access is blocked. Tap below, select Permissions, and enable Camera."
+                        } else {
+                            "Camera access is needed to scan QR codes.\nGrant permission and try again."
+                        },
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(24.dp))
                     Button(onClick = {
-                        permissionState = PermissionState.REQUESTING
-                        permissionLauncher.launch(Manifest.permission.CAMERA)
+                        if (permissionBlocked) {
+                            // Fallback: the system will never show the request
+                            // dialog again — send the user to our app's page in
+                            // system settings (Permissions → Camera).
+                            openAppSettings(context)
+                        } else {
+                            // Still askable: ask the system for camera permission again.
+                            permissionState = PermissionState.REQUESTING
+                            permissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
                     }) {
-                        Text("Grant Permission")
+                        Text(if (permissionBlocked) "Open App Settings" else "Grant Permission")
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(onClick = onDismiss) {
@@ -354,5 +421,51 @@ private fun ScannerOverlay() {
         // Bottom-right
         drawLine(bracketColor, Offset(left + scanSize, top + scanSize - bracketLength), Offset(left + scanSize, top + scanSize - cornerRadius), bracketWidth)
         drawLine(bracketColor, Offset(left + scanSize - cornerRadius, top + scanSize), Offset(left + scanSize - bracketLength, top + scanSize), bracketWidth)
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+/**
+ * True only when a permission request was actually attempted AND the system
+ * no longer shows the rationale — i.e. permanently blocked (the request
+ * dialog would be auto-denied silently). The hasAttemptedRequest guard keeps
+ * "never asked" (rationale == false) from being misread as blocked.
+ */
+private fun computePermissionBlocked(context: Context, hasAttemptedRequest: Boolean): Boolean {
+    if (!hasAttemptedRequest) return false
+    val activity = context.findActivity() ?: return false
+    return !ActivityCompat.shouldShowRequestPermissionRationale(
+        activity, Manifest.permission.CAMERA
+    )
+}
+
+/**
+ * Fallback destination when the permission dialog can no longer be shown.
+ * Android does not expose an intent for the per-permission sub-page, so this
+ * lands on our app's page in system settings — Permissions → Camera is one
+ * tap from there.
+ */
+private fun openAppSettings(context: Context) {
+    val intent = Intent(
+        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        Uri.parse("package:${context.packageName}")
+    )
+    if (context !is Activity) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    try {
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        // OEM without the settings screen: give written directions instead.
+        Toast.makeText(
+            context,
+            "Open Settings > Apps > Permissions > Camera and enable it",
+            Toast.LENGTH_LONG
+        ).show()
     }
 }

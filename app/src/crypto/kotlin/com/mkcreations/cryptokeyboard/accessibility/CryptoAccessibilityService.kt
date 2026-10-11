@@ -1,16 +1,21 @@
 package com.mkcreations.cryptokeyboard.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import com.mkcreations.cryptokeyboard.core.PanicConfig
 import com.mkcreations.cryptokeyboard.core.PanicHandler
 import com.mkcreations.cryptokeyboard.core.SharedState
+import com.mkcreations.cryptokeyboard.core.WindowedCounter
 import com.mkcreations.cryptokeyboard.crypto.DecryptCache
 import com.mkcreations.cryptokeyboard.crypto.MessageProcessor
+import com.mkcreations.cryptokeyboard.model.AppSettings
 import com.mkcreations.cryptokeyboard.storage.SecureKeyStore
 import com.mkcreations.cryptokeyboard.storage.SettingsStore
 
@@ -18,6 +23,7 @@ class CryptoAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "CryptoA11y"
+        private const val PANIC_TAG = "CryptoPanic"
         var instance: CryptoAccessibilityService? = null
             private set
     }
@@ -25,6 +31,41 @@ class CryptoAccessibilityService : AccessibilityService() {
     private var overlayManager: OverlayManager? = null
     private var keyStore: SecureKeyStore? = null
     private var panicHandler: PanicHandler? = null
+
+    // Panic trigger counters (see onKeyEvent / onKeyTapped)
+    private val volumeDownCounter = WindowedCounter(requiredCount = 3, windowMs = 1500L)
+    private val spacebarTapCounter = WindowedCounter(requiredCount = 3, windowMs = 700L)
+
+    // Hot paths (per-key-tap, volume presses) must not decrypt the whole
+    // preference store per event — cached here, refreshed on connect and on
+    // every refreshPanicTriggers() from the settings UI.
+    @Volatile
+    private var settingsSnapshot: AppSettings? = null
+
+    private fun currentSettings(): AppSettings =
+        settingsSnapshot ?: SettingsStore.getInstance(this).loadSettings().also {
+            settingsSnapshot = it
+        }
+
+    /**
+     * One-line snapshot of the panic trigger config, logged on service start and
+     * settings refresh so on-device logs show exactly which triggers are armed.
+     */
+    private fun logPanicConfig(settings: AppSettings, source: String) {
+        Log.d(
+            PANIC_TAG,
+            "panic config ($source): master=${settings.panicEnabled} " +
+                "armed=${PanicConfig.isArmed(settings)} " +
+                "triggers[shake=${settings.panicTriggerShake} " +
+                "faceDown=${settings.panicTriggerFaceDown} " +
+                "spacebar=${settings.panicTriggerSpacebar} " +
+                "volume=${settings.panicTriggerVolumeSequence}] " +
+                "actions[prevIme=${settings.panicActionSwitchIme} " +
+                "dismiss=${settings.panicActionRemoveOverlays} " +
+                "clearCache=${settings.panicActionClearCache} " +
+                "wipe=${settings.panicActionWipeKeys}]"
+        )
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private var pendingUpdate: Runnable? = null
@@ -63,6 +104,12 @@ class CryptoAccessibilityService : AccessibilityService() {
         OverlayManager.onManagerCreated(overlayManager!!)
         startPanicHandlerIfEnabled()
 
+        // Panic trigger: observe hardware key events (volume sequence).
+        // Events are never consumed — onKeyEvent always passes them through.
+        serviceInfo = serviceInfo.apply {
+            flags = flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        }
+
         val wm = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
         val metrics = DisplayMetrics()
         @Suppress("DEPRECATION")
@@ -85,12 +132,99 @@ class CryptoAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
-    /** Panic mode was previously never instantiated — start it when enabled. */
+    /** Panic mode was previously never instantiated — start it when armed. */
     private fun startPanicHandlerIfEnabled() {
         val settings = SettingsStore.getInstance(this).loadSettings()
-        if (!settings.panicEnabled) return
-        panicHandler = PanicHandler(this).also { it.startListening(settings.panicTrigger) }
-        Log.d(TAG, "Panic handler started (trigger: ${settings.panicTrigger})")
+        settingsSnapshot = settings
+        logPanicConfig(settings, "connect")
+        if (armedPanicHandler(settings) == null) return
+        Log.d(TAG, "Panic handler started (armed)")
+    }
+
+    /**
+     * Returns the panic handler, starting it when the system is armed but not
+     * yet running (e.g. settings changed while the service was already up).
+     * Null while disarmed — external triggers no-op.
+     */
+    private fun armedPanicHandler(settings: AppSettings): PanicHandler? {
+        if (!PanicConfig.isArmed(settings)) return null
+        return panicHandler ?: PanicHandler(this).also {
+            it.startListening(settings)
+            panicHandler = it
+        }
+    }
+
+    /**
+     * Panic trigger: triple-press of Volume Down within 1.5 s.
+     * [super.onKeyEvent] passes the event through unchanged — this service
+     * observes but never consumes hardware keys.
+     */
+    override fun onKeyEvent(event: KeyEvent?): Boolean {
+        if (event != null &&
+            event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN &&
+            event.action == KeyEvent.ACTION_DOWN &&
+            event.repeatCount == 0
+        ) {
+            val settings = currentSettings()
+            val armed = PanicConfig.isArmed(settings)
+            val triggerOn = settings.panicTriggerVolumeSequence
+            val fired = armed && triggerOn && volumeDownCounter.record(System.currentTimeMillis())
+            Log.d(
+                PANIC_TAG,
+                "volume-down seen (armed=$armed triggerOn=$triggerOn fired=$fired)"
+            )
+            if (fired) {
+                armedPanicHandler(settings)?.triggerPanic()
+            }
+        }
+        return super.onKeyEvent(event)
+    }
+
+    /**
+     * Spacebar triple-tap trigger, called from the IME via [CryptoBarHook]'s
+     * reflection bridge for every completed key tap. Consecutive space taps
+     * within 0.7 s fire panic; any other key resets the burst, so fast typing
+     * can never accumulate into an accidental trigger.
+     */
+    fun onKeyTapped(isSpacebar: Boolean) {
+        if (!isSpacebar) {
+            spacebarTapCounter.reset()
+            return
+        }
+        val settings = currentSettings()
+        if (!PanicConfig.isArmed(settings) || !settings.panicTriggerSpacebar) {
+            spacebarTapCounter.reset()
+            return
+        }
+        if (spacebarTapCounter.record(System.currentTimeMillis())) {
+            Log.d(PANIC_TAG, "spacebar triple-tap fired")
+            armedPanicHandler(settings)?.triggerPanic()
+        }
+    }
+
+    /** Spacebar quick-swipe trigger; true when consumed as a panic gesture. */
+    fun onSpacebarPanicGesture(): Boolean {
+        val settings = currentSettings()
+        val armed = PanicConfig.isArmed(settings)
+        val triggerOn = settings.panicTriggerSpacebar
+        Log.d(PANIC_TAG, "spacebar swipe-down (armed=$armed triggerOn=$triggerOn)")
+        if (!armed || !triggerOn) return false
+        armedPanicHandler(settings)?.triggerPanic()
+        return true
+    }
+
+    /** Re-evaluates panic triggers after a settings change (settings UI calls this). */
+    fun refreshPanicTriggers() {
+        panicHandler?.stopListening()
+        panicHandler = null
+        volumeDownCounter.reset()
+        spacebarTapCounter.reset()
+        val settings = SettingsStore.getInstance(this).loadSettings()
+        settingsSnapshot = settings
+        logPanicConfig(settings, "refresh")
+        if (PanicConfig.isArmed(settings)) {
+            panicHandler = PanicHandler(this).also { it.startListening(settings) }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {

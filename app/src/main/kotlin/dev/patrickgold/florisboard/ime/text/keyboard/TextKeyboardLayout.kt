@@ -680,6 +680,7 @@ private class TextKeyboardLayoutController(
             }
             pointer.activeKey = null
         }
+
         pointer.hasTriggeredGestureMove = false
     }
 

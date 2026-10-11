@@ -74,6 +74,9 @@ object CryptoBarHook {
     private var exchangeModeGetter: java.lang.reflect.Method? = null
     private var exchangeModeSetter: java.lang.reflect.Method? = null
     private var accessibilityServiceClass: Class<*>? = null
+    private var accessibilityInstanceField: java.lang.reflect.Field? = null
+    private var a11yOnKeyTappedMethod: java.lang.reflect.Method? = null
+    private var a11yOnSpacebarGestureMethod: java.lang.reflect.Method? = null
 
     private var appContext: Context? = null
     private var lockPromptShowing = false
@@ -113,6 +116,14 @@ object CryptoBarHook {
                 accessibilityServiceClass = Class.forName(
                     "com.mkcreations.cryptokeyboard.accessibility.CryptoAccessibilityService"
                 )
+                // Panic trigger bridge: cached so per-key-tap calls stay cheap.
+                accessibilityInstanceField = accessibilityServiceClass
+                    ?.getDeclaredField("instance")
+                    ?.apply { isAccessible = true }
+                a11yOnKeyTappedMethod = accessibilityServiceClass
+                    ?.getMethod("onKeyTapped", Boolean::class.javaPrimitiveType)
+                a11yOnSpacebarGestureMethod = accessibilityServiceClass
+                    ?.getMethod("onSpacebarPanicGesture")
             } catch (e: Exception) {}
 
             val cryptoGetter = sharedStateClass!!.getMethod("isCryptoModeActive")
@@ -154,6 +165,38 @@ object CryptoBarHook {
         }
     }
 
+    /**
+     * Expands the compact bar and activates the Secret field. Used by every
+     * "Tap ▴ to compose" entry point (text tap, ▴ button, swipe-up) so opening
+     * the bar always lands focus on the Secret field, matching what the strip
+     * toggle already does.
+     */
+    fun expandAndFocusSecret() {
+        if (!_isInitialized) return
+        _isExpanded.value = true
+        _activeField.value = CryptoField.SECRET
+    }
+
+    /**
+     * The user interacted with a text field on the screen while a crypto field
+     * was active. Re-target input: if both fields are still empty the bar has
+     * nothing to protect, so close it entirely; if anything is typed, keep the
+     * bar open (content stays visible) but deactivate the crypto field so
+     * keystrokes go to the tapped field instead of blinking carets in the bar.
+     * No-op when no crypto field is active, so normal typing in the app never
+     * collapses the bar.
+     */
+    fun onAppFieldInteraction() {
+        if (!_isInitialized) return
+        if (!_isCryptoModeActive.value) return
+        if (_activeField.value == CryptoField.NONE) return
+        if (_secretMessage.value.isEmpty() && _coverMessage.value.isEmpty()) {
+            toggleCryptoMode() // both empty → close the bar (incl. SharedState sync)
+        } else {
+            _activeField.value = CryptoField.NONE
+        }
+    }
+
     fun toggleExchangeMode() {
         if (!_isInitialized) return
         try {
@@ -174,6 +217,33 @@ object CryptoBarHook {
             } catch (e: Exception) {}
         } catch (e: Exception) {
             Log.e(TAG, "toggleExchangeMode failed", e)
+        }
+    }
+
+    /**
+     * Reports a completed key tap to the accessibility service so the
+     * spacebar triple-tap panic trigger can count consecutive space taps.
+     * Any non-space key resets the service's burst counter.
+     */
+    fun onKeyTapped(isSpacebar: Boolean) {
+        if (!_isInitialized) return
+        try {
+            val service = accessibilityInstanceField?.get(null) ?: return
+            a11yOnKeyTappedMethod?.invoke(service, isSpacebar)
+        } catch (e: Exception) {}
+    }
+
+    /**
+     * Spacebar quick-swipe panic trigger. Returns true when the gesture was
+     * consumed as a panic gesture (panic system armed + trigger enabled).
+     */
+    fun onSpacebarPanicSwipe(): Boolean {
+        if (!_isInitialized) return false
+        return try {
+            val service = accessibilityInstanceField?.get(null) ?: return false
+            a11yOnSpacebarGestureMethod?.invoke(service) as? Boolean ?: false
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -667,7 +737,7 @@ private fun CompactCryptoBar() {
             .background(Color(0xFF1A1A2E))
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount < -20) CryptoBarHook._isExpanded.value = true
+                    if (dragAmount < -20) CryptoBarHook.expandAndFocusSecret()
                 }
             }
             .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -697,7 +767,7 @@ private fun CompactCryptoBar() {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .weight(1f)
-                .clickable { CryptoBarHook._isExpanded.value = true }
+                .clickable { CryptoBarHook.expandAndFocusSecret() }
         )
 
         if (secretMessage.isNotEmpty()) {
@@ -711,7 +781,7 @@ private fun CompactCryptoBar() {
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
                 .background(Color(0xFF222244))
-                .clickable { CryptoBarHook._isExpanded.value = true }
+                .clickable { CryptoBarHook.expandAndFocusSecret() }
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         )
     }
@@ -1071,16 +1141,14 @@ private fun CryptoInputField(
 
         Box(modifier = Modifier.weight(1f)) {
             if (value.isEmpty()) {
-                Row {
-                    // Reserved caret slot: constant width, and the caret shares the
-                    // field's 13.sp size, so the 530ms blink toggles only the glyph
-                    // inside the slot — the layout never reflows and nothing in the
-                    // bar moves while it blinks. The caret renders at insertion
-                    // point 0 (before the hint), and the hint keeps its unfocused
-                    // string on focus — standard placeholder behavior.
-                    Box(modifier = Modifier.width(6.dp), contentAlignment = Alignment.CenterStart) {
-                        if (isActive && cursorVisible) Text("▏", color = activeColor, fontSize = 13.sp)
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Reserved caret slot: fixed 6.dp x 16.dp, always composed, and
+                    // the caret is a plain Spacer rectangle (not text), so its blink
+                    // has zero font-metric or line-height coupling — the row and the
+                    // whole bar keep an identical size on every blink. The caret
+                    // renders at insertion point 0 (before the hint), and the hint
+                    // keeps its unfocused string on focus — placeholder behavior.
+                    CaretSlot(isActive = isActive, visible = cursorVisible, activeColor = activeColor)
                     Text(
                         placeholder,
                         color = if (isActive) activeColor.copy(alpha = 0.4f) else Color(0xFF3A3A4A),
@@ -1088,11 +1156,9 @@ private fun CryptoInputField(
                     )
                 }
             } else {
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(value, color = if (isActive) Color(0xFFEEEEFF) else Color(0xFFAAAABB), fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    Box(modifier = Modifier.width(6.dp), contentAlignment = Alignment.CenterStart) {
-                        if (isActive && cursorVisible) Text("▏", color = activeColor, fontSize = 13.sp)
-                    }
+                    CaretSlot(isActive = isActive, visible = cursorVisible, activeColor = activeColor)
                 }
             }
         }
@@ -1101,6 +1167,26 @@ private fun CryptoInputField(
             Text(
                 "✕", color = Color(0xFF555566), fontSize = 11.sp,
                 modifier = Modifier.clip(CircleShape).background(Color(0xFF2A2A44)).clickable { onClear() }.padding(4.dp)
+            )
+        }
+    }
+}
+
+/**
+ * Fixed-size caret slot: the dimensions (6.dp x 16.dp) never change and the
+ * caret is drawn as a plain rectangle, so blinking cannot reflow the row — the
+ * bar size stays constant regardless of font metrics or glyph fallback.
+ */
+@Composable
+private fun CaretSlot(isActive: Boolean, visible: Boolean, activeColor: Color) {
+    Box(modifier = Modifier.width(6.dp).height(16.dp)) {
+        if (isActive && visible) {
+            Spacer(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .width(1.5.dp)
+                    .height(16.dp)
+                    .background(activeColor)
             )
         }
     }

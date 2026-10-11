@@ -131,7 +131,7 @@ fun CryptoSettingsScreen() = FlorisScreen {
                 title = "Panic Settings",
                 summary = "Configure emergency wipe triggers",
                 onClick = {
-                    // TODO: Route to panic settings
+                    navController.navigate(Routes.Settings.PanicSettings)
                 }
             )
         }

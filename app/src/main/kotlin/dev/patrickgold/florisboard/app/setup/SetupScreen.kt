@@ -18,6 +18,8 @@ package dev.patrickgold.florisboard.app.setup
 
 import android.content.Context
 import android.content.Intent
+import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,11 +35,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import dev.patrickgold.florisboard.R
@@ -48,6 +52,7 @@ import dev.patrickgold.florisboard.app.LocalNavController
 import dev.patrickgold.florisboard.app.Routes
 import dev.patrickgold.florisboard.lib.compose.FlorisScreen
 import dev.patrickgold.florisboard.lib.compose.FlorisScreenScope
+import dev.patrickgold.florisboard.lib.util.AccessibilityUtils
 import dev.patrickgold.florisboard.lib.util.InputMethodUtils
 import dev.patrickgold.florisboard.lib.util.launchActivity
 import dev.patrickgold.florisboard.lib.util.launchUrl
@@ -78,6 +83,13 @@ fun SetupScreen() = FlorisScreen {
     val isFlorisBoardEnabled by InputMethodUtils.observeIsFlorisboardEnabled(foregroundOnly = true)
     val isFlorisBoardSelected by InputMethodUtils.observeIsFlorisboardSelected(foregroundOnly = true)
     val hasNotificationPermission by prefs.internal.notificationPermissionState.collectAsState()
+    val accessibilitySetupState by prefs.internal.accessibilitySetupState.collectAsState()
+    val hasAccessibilityService = remember(context) { AccessibilityUtils.isServiceDeclared(context) }
+    val accessibilityServiceLabel = remember(context) { AccessibilityUtils.resolveDeclaredServiceLabel(context) }
+    val isAccessibilityEnabled by AccessibilityUtils.observeServiceEnabled(
+        context = context,
+        isDeclared = hasAccessibilityService,
+    )
 
     val requestNotification =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -98,6 +110,10 @@ fun SetupScreen() = FlorisScreen {
         requestNotification,
         hasNotificationPermission,
         scope,
+        hasAccessibilityService,
+        accessibilityServiceLabel,
+        isAccessibilityEnabled,
+        accessibilitySetupState,
     )
 }
 
@@ -110,28 +126,36 @@ private fun FlorisScreenScope.content(
     requestNotification: ManagedActivityResultLauncher<String, Boolean>,
     hasNotificationPermission: NotificationPermissionState,
     scope: CoroutineScope,
+    hasAccessibilityService: Boolean,
+    accessibilityServiceLabel: String?,
+    isAccessibilityEnabled: Boolean,
+    accessibilitySetupState: AccessibilitySetupState,
 ) {
 
+    fun resolveStep() = resolveSetupStep(
+        isImeEnabled = isFlorisBoardEnabled,
+        isImeSelected = isFlorisBoardSelected,
+        hasAccessibilityService = hasAccessibilityService,
+        isAccessibilityEnabled = isAccessibilityEnabled,
+        isAccessibilitySkipped = accessibilitySetupState == AccessibilitySetupState.SKIPPED,
+        notificationPermission = hasNotificationPermission,
+        isApi33OrAbove = AndroidVersion.ATLEAST_API33_T,
+    )
+
     val stepState = rememberSaveable(saver = FlorisStepState.Saver) {
-        val initStep = when {
-            !isFlorisBoardEnabled -> Steps.EnableIme.id
-            !isFlorisBoardSelected -> Steps.SelectIme.id
-            hasNotificationPermission == NotificationPermissionState.NOT_SET && AndroidVersion.ATLEAST_API33_T -> Steps.SelectNotification.id
-            else -> Steps.FinishUp.id
-        }
-        FlorisStepState.new(init = initStep)
+        FlorisStepState.new(init = resolveStep().id)
     }
 
     content {
-        LaunchedEffect(isFlorisBoardEnabled, isFlorisBoardSelected, hasNotificationPermission) {
-            stepState.setCurrentAuto(
-                when {
-                    !isFlorisBoardEnabled -> Steps.EnableIme.id
-                    !isFlorisBoardSelected -> Steps.SelectIme.id
-                    hasNotificationPermission == NotificationPermissionState.NOT_SET && AndroidVersion.ATLEAST_API33_T -> Steps.SelectNotification.id
-                    else -> Steps.FinishUp.id
-                }
-            )
+        LaunchedEffect(
+            isFlorisBoardEnabled,
+            isFlorisBoardSelected,
+            hasNotificationPermission,
+            hasAccessibilityService,
+            isAccessibilityEnabled,
+            accessibilitySetupState,
+        ) {
+            stepState.setCurrentAuto(resolveStep().id)
         }
 
         // Below block allows to return from the system IME enabler activity
@@ -165,7 +189,8 @@ private fun FlorisScreenScope.content(
                 Spacer(modifier = Modifier.height(16.dp))
             },
             steps = steps(
-                context, navController, requestNotification, scope
+                context, navController, requestNotification, scope,
+                hasAccessibilityService, accessibilityServiceLabel,
             ),
             footer = {
                 footer(context)
@@ -201,6 +226,8 @@ private fun PreferenceUiScope<FlorisPreferenceModel>.steps(
     navController: NavController,
     requestNotification: ManagedActivityResultLauncher<String, Boolean>,
     scope: CoroutineScope,
+    hasAccessibilityService: Boolean,
+    accessibilityServiceLabel: String?,
 ): List<FlorisStep> {
 
     return listOfNotNull(
@@ -222,6 +249,43 @@ private fun PreferenceUiScope<FlorisPreferenceModel>.steps(
                 InputMethodUtils.showImePicker(context)
             }
         },
+        if (hasAccessibilityService) {
+            FlorisStep(
+                id = Steps.EnableAccessibility.id,
+                title = stringRes(R.string.setup__enable_accessibility__title),
+            ) {
+                StepText(
+                    stringRes(
+                        R.string.setup__enable_accessibility__description,
+                        "a11y_service_label" to (accessibilityServiceLabel ?: ""),
+                    )
+                )
+                if (AndroidVersion.ATLEAST_API33_T) {
+                    StepText(
+                        text = stringRes(R.string.setup__enable_accessibility__restricted_hint),
+                        fontStyle = FontStyle.Italic,
+                    )
+                }
+                StepButton(label = stringRes(R.string.setup__enable_accessibility__open_settings_btn)) {
+                    try {
+                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Cannot open settings", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                TextButton(
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    onClick = {
+                        scope.launch {
+                            this@steps.prefs.internal.accessibilitySetupState
+                                .set(AccessibilitySetupState.SKIPPED)
+                        }
+                    },
+                ) {
+                    Text(stringRes(R.string.setup__enable_accessibility__skip_btn))
+                }
+            }
+        } else null,
         if (AndroidVersion.ATLEAST_API33_T) {
             FlorisStep(
                 id = Steps.SelectNotification.id,
@@ -251,9 +315,3 @@ private fun PreferenceUiScope<FlorisPreferenceModel>.steps(
     )
 }
 
-private sealed class Steps(val id: Int) {
-    data object EnableIme : Steps(id = 1)
-    data object SelectIme : Steps(id = 2)
-    data object SelectNotification : Steps(id = 3)
-    data object FinishUp : Steps(id = 4)
-}

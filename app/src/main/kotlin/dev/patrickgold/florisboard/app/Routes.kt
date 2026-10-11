@@ -167,6 +167,10 @@ object Routes {
         @Serializable
         @Deeplink("settings/crypto/key-management")
         object KeyManagement
+
+        @Serializable
+        @Deeplink("settings/crypto/panic")
+        object PanicSettings
         // -------------------------
 
         @Serializable

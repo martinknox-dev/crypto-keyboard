@@ -19,15 +19,18 @@ data class AppSettings(
     val autoEnableExchange: Boolean = false,
     val smartKeySelection: Boolean = true,
 
-    // Panic
+    // Panic — master switch (off = whole panic system disarmed)
     val panicEnabled: Boolean = false,
-    val panicTrigger: PanicTrigger = PanicTrigger.SHAKE,
-    val panicSwitchKeyboard: Boolean = true,
-    val panicDisableExchange: Boolean = true,
-    val panicRemoveOverlays: Boolean = true,
-    val panicClearCache: Boolean = true,
-    val panicLockApp: Boolean = false,
-    val panicClearKeys: Boolean = false,
+    // Panic — triggers (independent; at least one must be on when master is on)
+    val panicTriggerShake: Boolean = true,
+    val panicTriggerFaceDown: Boolean = false,
+    val panicTriggerSpacebar: Boolean = false,
+    val panicTriggerVolumeSequence: Boolean = false,
+    // Panic — actions
+    val panicActionSwitchIme: Boolean = true,
+    val panicActionRemoveOverlays: Boolean = true,   // also disables exchange mode
+    val panicActionClearCache: Boolean = true,       // also relocks the app
+    val panicActionWipeKeys: Boolean = false,
 
     // Battery
     val idleTimeoutMinutes: Int = 3,
@@ -42,10 +45,6 @@ enum class LockMethod {
 
 enum class DisguiseIcon {
     DEFAULT, CALCULATOR, NOTES, SYSTEM_UTILITY, FILE_MANAGER
-}
-
-enum class PanicTrigger {
-    SHAKE, SCREEN_DOWN, POWER_BUTTON, VOLUME_UP
 }
 
 enum class AnimationLevel {

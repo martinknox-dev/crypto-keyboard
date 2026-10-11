@@ -42,6 +42,7 @@ import dev.patrickgold.florisboard.ime.keyboard3.LocalImeController
 import dev.patrickgold.florisboard.ime.keyboard3.touch.InputShiftState
 import dev.patrickgold.florisboard.ime.keyboard3.touch.TouchKey
 import dev.patrickgold.florisboard.ime.keyboard3.touch.TouchKeyboard
+import dev.patrickgold.florisboard.ime.text.CryptoBarHook
 import dev.patrickgold.jetpref.datastore.model.collectAsState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -324,16 +325,41 @@ class PointerTracker(
         trackedOutputPointer.value?.takeIf { it.id == up.id }?.let { trackedPointer ->
             trackedPointer.longPress.extendedJob?.cancel()
             trackedPointer.repeatJob?.cancel()
-            imeController.updateState {
-                val output = when {
-                    trackedPointer.downKey == trackedMultiTapSeq.value?.touchKey -> null
-                    trackedPointer.longPress.shouldShowExtendedPopup() -> {
-                        trackedPointer.longPress.extendedKeys.getOrNull(trackedPointer.longPress.extendedFocusedIndex)
-                            ?.data?.output
+
+            // Modified by MK - Added CryptoHook (2026)
+            // --- CRYPTO HOOK: spacebar panic gestures on the live (keyboard3) touch path ---
+            // The keyboard renders via ImeKeyboardBox, whose only touch handler is
+            // PointerTracker (trackPointerInput); TextKeyboardLayout is dead code, so this
+            // is where spacebar taps/swipes must be observed for the panic triggers.
+            val isSpaceKey = trackedPointer.downKey.isSuitableForSpaceBarDisplayOverride
+            val dyPx = up.position.y - trackedPointer.down.position.y
+            val dxPx = up.position.x - trackedPointer.down.position.x
+            val swipeThresholdPx = trackedPointer.downKey.bounds.height * size.height * 0.5f
+            val isQuickSwipeDown = isSpaceKey && dyPx > swipeThresholdPx &&
+                dyPx > kotlin.math.abs(dxPx)
+            val consumedAsPanicSwipe = isQuickSwipeDown &&
+                CryptoBarHook.onSpacebarPanicSwipe()
+            // --- END CRYPTO HOOK ---
+
+            if (!consumedAsPanicSwipe) {
+                imeController.updateState {
+                    val output = when {
+                        trackedPointer.downKey == trackedMultiTapSeq.value?.touchKey -> null
+                        trackedPointer.longPress.shouldShowExtendedPopup() -> {
+                            trackedPointer.longPress.extendedKeys.getOrNull(trackedPointer.longPress.extendedFocusedIndex)
+                                ?.data?.output
+                        }
+                        else -> trackedPointer.downKey.attrs.output
                     }
-                    else -> trackedPointer.downKey.attrs.output
+                    output?.let { emit(it) }
                 }
-                output?.let { emit(it) }
+
+                // Modified by MK - Added CryptoHook (2026)
+                // --- CRYPTO HOOK: report completed taps for the spacebar triple-tap trigger ---
+                if (!trackedPointer.longPress.shouldShowExtendedPopup()) {
+                    CryptoBarHook.onKeyTapped(isSpaceKey)
+                }
+                // --- END CRYPTO HOOK ---
             }
             trackedPeekPointer.update { it?.copy(peekMustSwitchBack = true) }
             trackedOutputPointer.value = null

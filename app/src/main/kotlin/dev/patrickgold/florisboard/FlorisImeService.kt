@@ -164,8 +164,10 @@ class FlorisImeService : LifecycleInputMethodService() {
                 }
             }
         } catch (e: Exception) {
+            // Do NOT fall back to the IME picker here — the caller wants a
+            // silent switch back to the previously used keyboard, and a picker
+            // dialog would be "something else" (user-reported bug). Log only.
             flogError { "Unable to switch to the previous IME" }
-            imm?.showInputMethodPicker()
         }
         return false
     }
@@ -324,6 +326,10 @@ class FlorisImeService : LifecycleInputMethodService() {
         flogInfo { "info=${info?.debugSummarize()} restarting=$restarting" }
         super.onStartInputView(info, restarting)
         if (info == null) return
+        // User started (or restarted) input on a screen field — hand control
+        // back from any active crypto field (close bar if empty, else stop
+        // capturing). No-op when no crypto field is active.
+        CryptoBarHook.onAppFieldInteraction()
         currentInputConnection?.requestCursorUpdates(ImeEditor.CURSOR_UPDATES)
         val ic = WeakReference(currentInputConnection)
         val editorInfo = FlorisEditorInfo.wrap(info)
@@ -350,6 +356,30 @@ class FlorisImeService : LifecycleInputMethodService() {
         flogInfo { "new=$newSelection" }
         imeController.updateStateBlocking {
             handleUpdateSelection(newSelection)
+        }
+    }
+
+    override fun onUpdateSelection(
+        oldSelStart: Int,
+        oldSelEnd: Int,
+        newSelStart: Int,
+        newSelEnd: Int,
+        candidatesStart: Int,
+        candidatesEnd: Int,
+    ) {
+        super.onUpdateSelection(
+            oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd
+        )
+        // The standard editor signal for cursor/selection moves: fires when the
+        // user taps a screen field (same field included — no restartInput) or
+        // long-press-selects text. An actual move = the user interacted with the
+        // screen's field, so hand input back from any active crypto field
+        // (close bar if both fields empty, else stop capturing). No-op when no
+        // crypto field is active, so normal typing in the app never collapses
+        // the bar. Candidates/composing-only updates (same selection) are ignored.
+        if (oldSelStart != newSelStart || oldSelEnd != newSelEnd) {
+            flogInfo { "selection moved: ($oldSelStart,$oldSelEnd)->($newSelStart,$newSelEnd)" }
+            CryptoBarHook.onAppFieldInteraction()
         }
     }
 

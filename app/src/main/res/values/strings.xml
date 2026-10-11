@@ -629,6 +629,12 @@
     <string name="setup__select_ime__description">{app_name} is now enabled in your system. To actively use it, switch to {app_name} by selecting it in the input selector dialog!</string>
     <string name="setup__select_ime__switch_keyboard_btn">Switch keyboard</string>
 
+    <string name="setup__enable_accessibility__title">Turn on screen scanning</string>
+    <string name="setup__enable_accessibility__description">To let {app_name} detect and decode hidden messages on your screen, enable the decoder service.\n\n1. In the list, find "{a11y_service_label}" (on some phones it is under "Installed apps").\n2. Tap it and turn the switch ON.\n\nReturn here when you are done — setup continues automatically.</string>
+    <string name="setup__enable_accessibility__restricted_hint">(If Android says "Restricted setting", go to App Info → tap the 3 dots in the top right → "Allow restricted settings").</string>
+    <string name="setup__enable_accessibility__open_settings_btn">Open Accessibility Settings</string>
+    <string name="setup__enable_accessibility__skip_btn">Maybe later</string>
+
     <string name="setup__grant_notification_permission__title">Permit crash report notifications</string>
     <string name="setup__grant_notification_permission__description">As of Android 13+, apps must ask for permission to
         send notifications. In Florisboard, this is only used to open a crash report screen in the event of a crash.
