@@ -66,3 +66,7 @@ target/
 **/*.rs.bk
 *.pdb
 .kotlin/
+
+# Release signing (never commit)
+keystore/
+keystore.properties

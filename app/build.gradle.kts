@@ -16,6 +16,7 @@
  */
 
 import com.android.build.api.dsl.ApplicationExtension
+import java.util.Properties
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -108,6 +109,22 @@ configure<ApplicationExtension> {
         compose = true
     }
 
+    // Release signing is driven by a gitignored keystore.properties (see
+    // keystore/). If the file is absent, release builds stay unsigned.
+    signingConfigs {
+        val keystorePropertiesFile = rootProject.file("keystore.properties")
+        if (keystorePropertiesFile.exists()) {
+            val keystoreProps = Properties()
+            keystorePropertiesFile.inputStream().use { keystoreProps.load(it) }
+            create("release") {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         named("debug") {
             applicationIdSuffix = ".debug"
@@ -128,6 +145,7 @@ configure<ApplicationExtension> {
 
         named("release") {
             versionNameSuffix = projectVersionNameSuffix
+            signingConfig = signingConfigs.findByName("release")
 
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             isMinifyEnabled = true
