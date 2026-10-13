@@ -34,11 +34,20 @@ v1 contacts working.
 ## 2. Receiver-Side Anti-Replay
 
 - Bounded LRU cache: 2,000 entries of SHA-256 payload hashes with timestamps,
-  TTL 30 days, both enforced (size eviction + time expiry).
+  TTL shared with the decrypt cache, both enforced (size eviction + time
+  expiry). *(Amended 2026-10-12: TTL was 30 days; it now follows
+  `cacheDurationMinutes` (default 5 min) via `CryptoSession.setCacheDuration()`,
+  so neither store can outlive the other.)*
 - Duplicate payloads are rejected before decryption; a payload is marked seen only
   after a successful decryption.
 - Cache is in-memory and per-device; SECURITY.md must document this as best-effort
   deduplication against verbatim re-sends, not a monotonic ratchet/session binding.
+  *(Amended 2026-10-12: `CryptoSession.forgetAll()` clears the replay cache and the
+  decrypt cache together on every reboot-semantics trigger — restart, Exchange Mode
+  toggle in both directions, app switch, idle auto-off, key import/delete/save,
+  active-key switch, invite accept, and panic — followed by a live rescan, so a
+  restart or cache clear genuinely forgets history and old messages re-decrypt
+  with the current key set.)*
 
 ## 3. PIN, App Lock & Key Derivation
 

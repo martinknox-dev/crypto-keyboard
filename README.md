@@ -1,474 +1,197 @@
 <div align="center">
   <img width="120" height="120" src=".github/repo_icon.png" alt="Crypto Keyboard icon">
-  
+
   # Crypto Keyboard
-  
+
   ### Invisible Encrypted Messaging for Android
-  
+
   **Send encrypted messages that look completely normal**
-  
+
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   [![Android](https://img.shields.io/badge/Platform-Android%208.0%2B-green.svg)](https://www.android.com/)
-  [![Status](https://img.shields.io/badge/Status-Beta-orange.svg)]()
+  [![Version](https://img.shields.io/badge/Version-0.6.0--alpha02-orange.svg)](https://github.com/martinknox-dev/crypto-keyboard/releases)
   [![Based on FlorisBoard](https://img.shields.io/badge/Based%20on-FlorisBoard-purple.svg)](https://github.com/florisboard/florisboard)
-  
-  [How It Works](#-how-it-works) • [Features](#-features) • [Installation](#-installation) • [Security](#-security)
-  
+
+  [How It Works](#-how-it-works) • [Compatibility](#-app-compatibility) • [Features](#-features) • [Install](#-installation) • [Security](#-security)
+
 </div>
 
 ---
 
 ## 🎯 What Is This?
 
-Crypto Keyboard is an Android keyboard that enables **steganographic encrypted messaging** — hiding encrypted messages inside innocent-looking text.
+An Android keyboard that hides **AES-256-GCM encrypted messages** inside innocent-looking text, using invisible Unicode characters.
 
-Your message looks like this to everyone else:
+To everyone else your message is:
 ```
 "ok 👍"
 ```
-
-But contains this hidden encrypted message:
+Your recipient's keyboard reveals the hidden message automatically:
 ```
 "Meeting moved to the safehouse at midnight. Bring the documents."
 ```
-
-The encrypted content is embedded using invisible Unicode characters that most messaging apps preserve. Your recipient's device automatically detects and decrypts the hidden message, displaying it as an overlay.
-
-**No one knows what you're communicating secretly** — not the messaging app, not the server, not surveillance systems.
 
 ---
 
 ## 🔄 How It Works
 
-### Sending
+**Sending:** you type the secret message → keyboard encrypts it → embeds it as invisible characters → wraps it in a visible cover message → sends.
 
-```
-You type secret message → Keyboard encrypts (AES-256-GCM) 
-→ Converts to invisible characters → Wraps in cover message 
-→ Sends: "ok 👍" [+ hidden encrypted data]
-```
+**Receiving — two paths, depending on the app:**
 
-### Receiving
+| Path | How |
+|------|-----|
+| **Auto (Exchange Mode)** | Accessibility service reads on-screen text, detects hidden data, decrypts it, and shows an overlay above the message |
+| **Manual (clipboard)** | Copy the message → tap **📋🔓** in the keyboard → decrypted text appears |
 
-```
-Encrypted message appears on screen → Accessibility Service detects hidden data 
-→ Extracts and decrypts → Shows overlay with real message
-```
+---
 
-Works across **some messaging app**: Telegram, Arattai, etc.,
+## 📱 App Compatibility — read this
+
+The **automatic overlay only works in apps that let accessibility services read their text** (e.g. Telegram). Some apps don't expose message text — for those, use the **clipboard path**: copy the message, tap **📋🔓**, done. If you can copy it, you can decrypt it.
+
+| App | Overlay (Exchange Mode) | Clipboard path |
+|-----|------------------------|----------------|
+| Telegram | ✅ Works | ✅ |
+| Arattai | ⚠️ Works, some UI quirks with overlays | ✅ |
+| WhatsApp | ❌ Doesn't expose text | ✅ Use this |
+| Signal | ❌ | ✅ |
+| Discord | ❌ | ✅ |
+| Messenger | ❌ | ✅ |
+| SMS | ❌ | ✅ |
+
+Some platforms strip invisible characters entirely — test with a quick message to yourself first.
 
 ---
 
 ## ✨ Features
 
-### Core Functionality
+**Messaging**
+- AES-256-GCM, random IV per message, header authenticated via AAD (tamper-evident)
+- No key identifiers on the wire (v2) — receiver trial-decrypts against stored contacts
+- Legacy v1 messages still accepted (receive-only)
+- Best-effort replay deduplication (in-memory; window follows the cache-duration setting)
+- Cover messages: auto-generated (casual/emoji), custom, or none
 
-**Encryption**
-- AES-256-GCM authenticated encryption
-- Random IV per message (no IV reuse patterns)
-- Header (version + IV) authenticated via GCM AAD — tamper-evident
-- No key identifiers on the wire (v2); receiver tries stored keys
-- Best-effort replay deduplication of captured messages
-- 256-bit cryptographic keys
-- Key fingerprinting for local multi-contact support
+**Keys**
+- QR code key exchange with fingerprint verification
+- 33-word recovery phrase (last word is a checksum)
+- Multiple keys for different contacts; tap the key pill to switch
+- Keys encrypted at rest via Android Keystore
+- Password-protected backup/restore (JSON export)
+- **In-band key invitations** — share your key inside an ordinary-looking cover message; the recipient approves it with one tap
 
-**Steganography**
-- 16 invisible Unicode characters for encoding
-- Distributed embedding (hidden data between visible characters)
-- Platform compatibility testing built-in
-- Message size estimation and warnings
+**Exchange Mode (auto-decrypt)**
+- Scans on-screen text, shows decrypted overlay with the sender's key label
+- Tracks message position while scrolling
+- Overlays are removed on app switch; scanning stops after inactivity
+- Device-tier aware scan limits to keep low-RAM phones fast
 
-**Keyboard Integration**
-- CRYPTO/NORMAL mode toggle
-- Secret message field (your real message)
-- Cover message field (what everyone sees)
-- Auto-generated cover messages (contextual, casual, emoji)
-- One-tap encrypt and send
-
-**Auto-Decryption (Exchange Mode)**
-- Accessibility Service scans on-screen text
-- Automatic detection of hidden messages
-- Overlay display of decrypted content
-- Position tracking during scrolling
-- Decryption cache for performance
-
-**Key Management**
-- QR code key exchange (scan to add contacts)
-- Keys encrypted at rest (Android Keystore)
-- Password-protected backup/restore
-- 33-word recovery phrases (last word is a checksum)
-- Multiple keys for different contacts
-
-**Additional Tools**
-- Clipboard decryption
-- Compatibility tester (checks which invisible chars work on your platform)
-- Message length calculator
-- Cover message generator
+**Privacy extras**
+- App lock (PIN) gating the keyboard UI
+- Panic mode — triggers: shake, face-down tilt, spacebar gesture; actions: switch keyboard, wipe caches, remove overlays, optional key wipe
+- Disguise the launcher icon (calculator, notes, file manager)
+- Keyboard layout selection: QWERTY (default) or QWERTZ
 
 ---
 
 ## 📥 Installation
 
-### Requirements
-- Android 8.0 (Oreo) or newer
-- ~25MB storage
-- Accessibility permission (for auto-decryption feature)
-- Play Protect on Playstore needs to be turned off before installing
-
-### From Source
+**Requirements:** Android 8.0+, ~35 MB storage. The Accessibility permission is optional — needed only for Exchange Mode.
 
 ```bash
 git clone https://github.com/martinknox-dev/crypto-keyboard.git
 cd crypto-keyboard
-./gradlew assembleDebug
-adb install app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleCryptoDebug
+adb install app/build/outputs/apk/crypto/debug/app-crypto-debug.apk
 ```
 
-### Setup
-
-1. **Enable keyboard**
-   - Settings → System → Languages & input → On-screen keyboard
-   - Enable "Crypto Keyboard"
-
-2. **Create your key**
-   - Open Crypto Keyboard app
-   - Key Management → Create New Key
-   - Set a label (e.g., "Alice", "Work Group")
-   - Back up your 33-word recovery phrase (the last word is a checksum)
-
-3. **Exchange keys with contacts**
-   - Show your QR code to contact
-   - Scan their QR code
-   - Verify fingerprint (compare first 8 characters)
-
-4. **Enable auto-decryption (optional)**
-   - Settings → Accessibility → Crypto Keyboard
-   - Enable service
+**Setup:**
+1. Enable the keyboard: Settings → System → On-screen keyboard → enable **Crypto Keyboard**
+2. Open the app → Key Management → **Create New Key** → back up the 33-word recovery phrase
+3. Exchange keys: show your QR code, scan theirs, compare the first 8 characters of the fingerprint in person
+4. Optional: Settings → Accessibility → enable **Crypto Keyboard** for auto-decrypt
 
 ---
 
 ## 🎮 How to Use
 
-### Sending Encrypted Messages
+**Send:** open any messaging app → tap the mode toggle (turns green = CRYPTO) → tap **Secret message…**, type your message → optionally set a cover message (**Auto Cover** generates one) → tap **🔒 Send**.
 
-1. Open any messaging app
-2. Tap keyboard mode strip → Toggle **CRYPTO** on
-3. Tap **🔒 Secret** field
-4. Type your hidden message
-5. (Optional) Tap **👁 Cover** field and type cover message, or tap **⚡ Auto**
-6. Tap **🔒 Send**
+**Receive (auto):** Exchange Mode on + a supported app → decrypted text appears as an overlay above the message. Tap it to dismiss.
 
-Message is encrypted, embedded, and sent automatically.
+**Receive (manual, any app):** long-press the message → Copy → tap **📋🔓** in the keyboard. A copied key invitation opens the interactive Key Approval Dialog instead of a decrypt result.
 
-### Receiving Encrypted Messages
-
-**With Exchange Mode ON:**
-- Hidden messages auto-decrypt
-- Decrypted text appears as green overlay
-- Tap overlay to dismiss
-
-**Without Exchange Mode (manual):**
-- Long-press message → Copy
-- Open keyboard
-- Tap **📋🔓** (clipboard decrypt button)
-- Read decrypted message
-
-### Switching Between Contacts
-
-- Tap **🔑 [Name]** pill to cycle through keys
-- Long-press to see full key list
+**Key invitations:** in Key Management, use *Share via cover message* — your key travels inside a normal-looking message. The recipient gets an approval prompt either automatically (Exchange Mode + invite scanning enabled) or manually (copy the invite, tap **📋🔓**). Both paths open the interactive Key Approval Dialog; accepting saves the key.
 
 ---
 
 ## 🔐 Security
 
-### Cryptographic Design
-
 | Component | Implementation |
 |-----------|----------------|
-| Encryption | AES-256-GCM |
-| Key size | 256 bits |
-| IV | 96 bits, random per message |
-| Authentication tag | 128 bits (GCM) |
+| Encryption | AES-256-GCM, 256-bit keys, 96-bit random IV, 128-bit tag |
+| Wire format (v2) | `[1B version][12B IV][ciphertext+tag]` — header authenticated via AAD, no fingerprint on the wire |
+| Wire format (v1, receive-only) | `[1B version][4B key fingerprint][12B IV][ciphertext+tag]` |
+| Steganography | 16 invisible Unicode characters (U+200B–U+200D, U+2060–U+2064, U+206A–U+206F, U+FEFF, U+00AD); payload wrapped in start/end isolate markers |
 | PIN protection | PBKDF2-HMAC-SHA256, 600k iterations, constant-time verify, exponential backoff after 5 failures |
-| Export encryption | PBKDF2-HMAC-SHA256, 100k iterations |
-| Replay protection | Per-device LRU dedup (2,000 entries, 30-day TTL, in-memory) — best-effort |
-| App lock | PBKDF2 PIN gate on keyboard show (never engages without a configured PIN) |
+| Backup export | PBKDF2-HMAC-SHA256, 100k iterations |
+| Replay protection | Per-device, in-memory dedup — best-effort only; window follows the cache-duration setting (default 5 min) and is cleared on app switch, Exchange Mode toggle, key changes, and panic |
+| App lock | PIN gate on keyboard UI (never engages without a configured PIN) |
 
-### Message Format
+**Protects against:** passive surveillance, server-side inspection, message tampering, shoulder surfing, casual forensics (keys encrypted at rest).
 
-```
-Current (v2):
-[1 byte version=2][12 bytes IV][N bytes ciphertext + tag]
-— header (version + IV) authenticated via GCM AAD; no fingerprint on the wire;
-  receiver trial-decrypts against stored contacts (only the right key verifies)
+**Does NOT protect against:** compromised devices, screen-recording malware, metadata analysis, steganalysis by sophisticated adversaries, long-term replay (dedup is per-device and in-memory — a second device that never saw the original accepts a replay), quantum attacks.
 
-Legacy (v1, receive only):
-[1 byte version=1][4 bytes key fingerprint][12 bytes IV][N bytes ciphertext + tag]
-```
-
-### Steganographic Encoding
-
-Each byte is split into two 4-bit nibbles, each encoded as one of 16 invisible Unicode characters:
-
-```
-U+200B, U+200C, U+200D, U+2060, U+2061, U+2062, U+2063, U+2064,
-U+206A, U+206B, U+206C, U+206D, U+206E, U+206F, U+FEFF, U+00AD
-```
-
-Signature markers (`U+2069 U+2068 U+2069 U+2068`) delimit the payload.
-
-### What This Protects Against
-
-✅ **Passive surveillance** — Messages look innocent  
-✅ **Server-side inspection** — Encrypted content is unreadable  
-✅ **Message tampering** — GCM authentication detects modifications, header bound via AAD  
-✅ **Shoulder surfing** — Cover message is what's visible  
-✅ **Forensic analysis** — Keys encrypted at rest via Android Keystore  
-✅ **Verbatim message re-sends** — Best-effort duplicate detection (per device, in-memory)
-
-### What This Doesn't Protect Against
-
-❌ **Compromised device** — If your phone is hacked, all bets are off  
-❌ **Screen recording malware** — Can capture decrypted overlays  
-❌ **Metadata** — Who you talk to, when, and frequency is visible  
-❌ **Statistical analysis** — Sophisticated detection can identify steganography  
-❌ **Long-term replay protection** — The dedup cache is per-device and resets on restart; a second device that never saw the original still accepts a replay  
-❌ **Quantum attacks** — Not post-quantum resistant (yet)
-
-### Known Limitations
-
-⚠️ **Not professionally audited** — Use for privacy, not life-or-death situations  
-⚠️ **Platform dependent** — Some apps strip invisible characters (use compatibility tester)  
-⚠️ **Message length limits** — Long secrets = many invisible chars (may hit app limits)  
-⚠️ **Accessibility permission** — Required for auto-decryption (broad access)  
-⚠️ **Cover text is sanitized** — Zero-width characters (including emoji joiners) are stripped from covers before embedding, so they cannot corrupt the payload  
-⚠️ **Send replaces existing input** — The send path commits the ciphertext as a replacement of whatever text the target app's field already held
-
----
-
-## ⚠️ Important Warnings
-
-### Security
-
-```
-⚠️  NOT AUDITED — Cryptographic implementation has not been professionally reviewed
-⚠️  BETA SOFTWARE — May contain security vulnerabilities
-⚠️  NOT FOR HIGH-RISK USE — Don't rely on this for life-threatening situations
-⚠️  STEGANOGRAPHY IS DETECTABLE — Advanced analysis can identify hidden messages
-```
-
-### Legal
-
-- **Know your local laws** — Encryption is restricted/illegal in some countries
-- **Respect platform Terms of Service** — Some apps prohibit hidden content
-- **Don't use for illegal purposes** — This is a privacy tool, not a crime tool
-
-### Operational Security
-
-- **Verify keys in person** — QR codes can be intercepted; verify fingerprints face-to-face
-- **Use separate keys** — Don't reuse the same key for multiple contacts
-- **Test compatibility first** — Some platforms strip invisible characters
-- **Keep cover messages natural** — "asdfghjkl" draws attention; "ok" doesn't
-- **Understand metadata limits** — This hides content, not communication patterns
-
----
-
-## 🏗️ Technical Architecture
-
-### Module Overview
-
-```
-app/src/crypto/kotlin/com/mkcreations/cryptokeyboard/
-├── crypto/
-│   ├── CryptoEngine.kt          # AES-256-GCM encryption/decryption
-│   ├── InvisibleEncoder.kt      # Steganographic encoding
-│   ├── MessageProcessor.kt      # High-level encrypt/decrypt API
-│   ├── KeyGenerator.kt          # Key generation, word phrases
-│   ├── CoverGenerator.kt        # Cover message generation
-│   ├── DecryptCache.kt          # In-memory decryption cache
-│   ├── PinHasher.kt             # PIN hashing for key protection
-│   ├── KeyExporter.kt           # Encrypted key backup
-│   ├── QrCodeHelper.kt          # QR code generation/parsing
-│   └── CompatibilityTester.kt   # Platform testing
-├── accessibility/
-│   ├── CryptoAccessibilityService.kt  # Main accessibility service
-│   ├── ScreenScanner.kt               # Detect encrypted messages
-│   └── OverlayManager.kt              # Display decrypted overlays
-├── storage/
-│   └── SecureKeyStore.kt        # Android Keystore integration
-├── model/
-│   ├── CipherKey.kt
-│   └── CoverStyle.kt
-└── ime/
-    └── CryptoBarHook.kt         # Keyboard UI integration
-```
-
-### Data Flow
-
-**Encryption:**
-```
-User Input → CryptoBarHook (UI) → MessageProcessor → CryptoEngine → InvisibleEncoder → Output
-```
-
-**Decryption:**
-```
-Screen Text → ScreenScanner → InvisibleEncoder (extract) → CryptoEngine → OverlayManager → Display
-```
-
----
-
-## 🧪 Compatibility Testing
-
-Different messaging platforms handle invisible characters differently. Use the built-in tester:
-
-1. Open Crypto Keyboard app
-2. Tools → Compatibility Test
-3. Copy test message
-4. Send to yourself on target platform
-5. Copy received message back
-6. Paste into app to analyze results
-
-**Results:**
-- **Excellent (16+ chars)** — Full encoding works
-- **Good (8-15 chars)** — Encoding works, slightly longer messages
-- **Moderate (4-7 chars)** — Basic encoding possible
-- **Limited (2-3 chars)** — Very long messages
-- **Poor (0-1 chars)** — Use "No Cover" mode (raw Base64)
-
-### Tested Platforms
-
-| Platform | Status |
-|----------|--------|
-| Telegram | ✅ Excellent |
-| WhatsApp | ⚠️ Works with Copy-Paste |
-| Signal | ⚠️ Works with Copy-Paste|
-| SMS | ⚠️ Works with Copy-Paste |
-| Discord | ⚠️ Works with Copy-Paste |
-| Facebook Messenger | ⚠️ Works with Copy-Paste |
-| Arattai | ⚠️ Wroks but UI fixes needed for Overlay |
+**Limitations:** not professionally audited — don't use for life-or-death situations. Some platforms strip invisible characters. Cover text is sanitized (zero-width chars stripped) so it can't corrupt the payload. Sending replaces existing text in the input field. Verify fingerprints in person — QR codes can be intercepted. Full threat model: [SECURITY.md](SECURITY.md).
 
 ---
 
 ## 🛠️ Building from Source
 
-### Prerequisites
-
-- Android Studio Hedgehog (2023.1.1) or newer
-- If you want a light-weight set-up go with CLI (advanced-users-only)
-- JDK 17
-- Android SDK 33+
-- Git
-
-### Build Steps
+**Prerequisites:** JDK 17, Android SDK 37, Git (or Android Studio Hedgehog+).
 
 ```bash
-# Clone
-git clone https://github.com/martinknox-dev/crypto-keyboard.git
-cd crypto-keyboard
+# Debug (two flavors: crypto = this app, floris = upstream UI)
+./gradlew assembleCryptoDebug
 
-# Build debug APK
-./gradlew assembleDebug
+# Release (signed if keystore.properties + keystore/ exist, otherwise unsigned)
+./gradlew assembleCryptoRelease
 
-# Build release APK (requires signing config)
-./gradlew assembleRelease
-
-# Run tests
-./gradlew test
-./gradlew connectedAndroidTest
+# Tests
+./gradlew :app:testCryptoDebugUnitTest :app:testFlorisDebugUnitTest
+./gradlew connectedAndroidTest   # requires a device
 ```
 
-### Project Structure
-
-```
-crypto-keyboard/
-├── app/
-│   ├── src/
-│   │   ├── main/           # FlorisBoard integration
-│   │   └── crypto/         # Crypto modules
-│   └── build.gradle
-├── docs/                   # Documentation
-├── .github/                # CI/CD
-└── README.md
-```
+Release signing is configured through a gitignored `keystore.properties` — see `app/build.gradle.kts`.
 
 ---
 
 ## 📚 Documentation
 
-- [Security Policy](SECURITY.md) — Threat model, audit status, responsible disclosure
-- [Contributing Guidelines](CONTRIBUTING.md) — How to contribute code
-- [Roadmap](ROADMAP.md) — Development plans
-- [Architecture](docs/ARCHITECTURE.md) — Technical deep dive
-- [API Reference](docs/API.md) — Developer documentation
+- [Security Policy](SECURITY.md) — threat model, audit status, responsible disclosure
+- [Contributing](CONTRIBUTING.md) • [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Roadmap](ROADMAP.md) — development plans
 
 ---
 
 ## 🗺️ Roadmap
 
-### Current: v0.6-beta
+**Now (0.6.0-alpha02):** encryption pipeline, steganographic encoding, QR key exchange, key invitations, Exchange Mode overlays, clipboard decryption, app lock, panic/wipe, QWERTY/QWERTZ layouts.
 
-**Status:** Core functionality complete, needs testing and polish
+**v1.0 goals:** professional security audit · compatibility verified on the top 10 messengers · pre-built signed releases · better key-verification UX.
 
-**Working:**
-- ✅ Full encryption/decryption pipeline
-- ✅ Steganographic encoding
-- ✅ Keyboard UI integration
-- ✅ Auto-decryption via Accessibility Service
-- ✅ Multi-key support
-- ✅ QR code key exchange
-
-**In Progress:**
-- 🚧 UI polish and animations
-- 🚧 Battery optimization
-- 🚧 Error handling improvements
-
-### v1.0 Goals
-
-- [ ] Professional security audit
-- [ ] Platform compatibility verified (top 10 messengers)
-- [ ] Comprehensive documentation
-- [ ] Pre-built signed APK releases
-- [ ] Panic/wipe functionality
-- [ ] Improved key verification UX
-
-### Future Ideas
-
-- Perfect forward secrecy
-- Post-quantum encryption
-- Group messaging support
-- File/image encryption
-- Cross-platform (iOS)
-
-See [ROADMAP.md](ROADMAP.md) for details.
+**Future:** perfect forward secrecy, post-quantum encryption, group messaging, file encryption, iOS. See [ROADMAP.md](ROADMAP.md).
 
 ---
 
-## 🤝 Contributing
+## 🤝 Contributing & Bugs
 
-Contributions welcome! This project needs:
+Contributions welcome — especially security review, messenger testing, and UI polish. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- **Security review** — Audit cryptographic implementation
-- **Platform testing** — Test on different messengers
-- **UI/UX improvements** — Better onboarding, accessibility
-- **Documentation** — Improve guides and code comments
-- **Bug reports** — Help identify issues
+Found a bug? Open an issue with your device model, Android version, app version, and steps to reproduce.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
----
-
-## 🐛 Bug Reports
-
-Found a bug? Please open an issue with:
-
-- Device model and Android version
-- App version
-- Steps to reproduce
-- Expected vs actual behavior
-- Logs (if available)
-
-**Security vulnerabilities:** Email [YOUR_EMAIL] instead of opening public issue.
+**Security vulnerabilities:** email **martinknox.dev@gmail.com** instead of opening a public issue.
 
 ---
 
@@ -491,52 +214,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-Full license text: [LICENSE](LICENSE)
-
 ---
 
 ## 🙏 Acknowledgments
 
-### Built On
-
-- **[FlorisBoard](https://github.com/florisboard/florisboard)** by Patrick Goldinger — Excellent keyboard foundation
-- **Android Jetpack** — Modern Android development tools
-- **[ZXing](https://github.com/zxing/zxing)** — QR code library
-
-### Inspired By
-
-- **[Stegcloak](https://github.com/KuroLabs/stegcloak)** — Text steganography concepts
-- **Signal Protocol** — Modern encryption design patterns
-- **PGP/GPG** — Public key cryptography principles
-
-### Thanks
-
-To everyone who:
-- Tested beta versions
-- Reported bugs
-- Suggested features
-- Contributed code
-- Spread the word
+Built on **[FlorisBoard](https://github.com/florisboard/florisboard)** by Patrick Goldinger. QR codes via **[ZXing](https://github.com/zxing/zxing)**. Inspired by **[Stegcloak](https://github.com/KuroLabs/stegcloak)**, the Signal Protocol, and PGP/GPG.
 
 ---
 
 ## 🔗 Links
 
-- **Repository:** https://github.com/martinknox-dev/crypto-keyboard
-- **Issues:** https://github.com/martinknox-dev/crypto-keyboard/issues
-- **Discussions:** https://github.com/martinknox-dev/crypto-keyboard/discussions
-- **Releases:** https://github.com/martinknox-dev/crypto-keyboard/releases
-
----
+**[Repository](https://github.com/martinknox-dev/crypto-keyboard)** • **[Releases](https://github.com/martinknox-dev/crypto-keyboard/releases)** • **[Issues](https://github.com/martinknox-dev/crypto-keyboard/issues)** • **[Discussions](https://github.com/martinknox-dev/crypto-keyboard/discussions)**
 
 <div align="center">
 
-## 🔐 Privacy Through Invisibility
-
 *"The best place to hide a message is where no one thinks to look."*
-
-**[Download](https://github.com/martinknox-dev/crypto-keyboard/releases)** • **[Documentation](docs/)** • **[Report Issue](https://github.com/martinknox-dev/crypto-keyboard/issues)**
-
-Made with privacy in mind.
 
 </div>

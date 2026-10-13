@@ -6,7 +6,7 @@
 
 ### Contact
 
-**Email:** [mkprogrammer01@gmail.com]
+**Email:** [martinknox.dev@gmail.com]
 
 ### What to Include
 
@@ -57,7 +57,7 @@ When reporting a security issue, please provide:
 - **Passive surveillance** — Message content is encrypted
 - **Server-side inspection** — Servers see only cover messages
 - **Message tampering** — GCM authentication detects modifications; the header (version + IV) is bound as AAD so it cannot be altered undetected
-- **Verbatim message re-sends** — Best-effort: a per-device, in-memory LRU (2,000 entries, 30-day TTL) rejects payloads it has already decrypted. This is NOT a session ratchet: a device restart, cache clear, or a second device that never saw the original will still accept the replay
+- **Verbatim message re-sends** — Best-effort: a per-device, in-memory LRU (2,000 entries; TTL follows the cache-duration setting, default 5 minutes) rejects payloads it has already decrypted. Both this history and the decrypt cache are forgotten together on every reboot-semantics trigger — app restart, Exchange Mode toggle (either direction), app switch, idle auto-off, any key change, and panic — so history truly only lives while the session does. This is NOT a session ratchet: a second device that never saw the original will still accept the replay
 - **Casual forensics** — Keys encrypted at rest via Android Keystore (the app-lock PIN gates the keyboard UI, it does not encrypt keys)
 - **Shoulder surfing** — Decrypted content hidden until Exchange Mode active
 
@@ -246,6 +246,12 @@ encrypted_export = AES-256-GCM(key_data, derived_key)
    - GCM authenticates ciphertext integrity, not sender identity
    - Relies on key fingerprint verification out-of-band
    - Future: Add digital signatures
+
+4. **In-band key invitations rely on transport encryption**
+   - Steganographic invites travel inside ordinary chat messages and are protected
+     only by the underlying chat app's end-to-end encryption
+   - Designed for covert key pairing, not out-of-band asymmetric authentication
+   - For higher assurance, exchange keys via QR in person and verify fingerprints
 
 ### Steganographic Limitations
 
@@ -461,7 +467,7 @@ We will NOT:
 
 ## Security Contact
 
-**Primary:** [mkprogrammer01@gmail.com]  
+**Primary:** [martinknox.dev@gmail.com]  
 **Backup 1:** [postbox32@zohomail.in]
 **Backup 2:** [letterbox32@proton.me]
 

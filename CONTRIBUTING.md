@@ -30,7 +30,7 @@ Thanks for your interest in contributing! This project needs help to become prod
 
 **DO NOT open public issues for security vulnerabilities.**
 
-Email: [mkprogrammer01@gmail.com]
+Email: [martinknox.dev@gmail.com]
 Email: [letterbox32@proton.me]
 Email: [postbox32@zohomail.in]
 
@@ -235,7 +235,7 @@ Improvements welcome for:
 
 - **General:** Open a [Discussion](https://github.com/martinknox-dev/crypto-keyboard/discussions)
 - **Bugs:** Open an [Issue](https://github.com/martinknox-dev/crypto-keyboard/issues)
-- **Security:** Email [YOUR_EMAIL]
+- **Security:** Email [martinknox.dev@gmail.com]
 
 ---
 

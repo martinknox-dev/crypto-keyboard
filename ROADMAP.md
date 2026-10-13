@@ -25,8 +25,10 @@ This document outlines development priorities for Crypto Keyboard.
 - PIN-protected app lock (PBKDF2 + backoff)
 - Replay detection (best-effort, per device)
 - Password-protected key export
-- Compatibility testing tool
 - Clipboard decryption
+- In-band key invitations (share a key inside a cover message; one-tap approval)
+- Panic mode (shake, face-down, spacebar triggers; cache wipe and optional key wipe actions)
+- QWERTY/QWERTZ keyboard layout switching
 
 ### In Progress 🚧
 
@@ -70,9 +72,9 @@ This document outlines development priorities for Crypto Keyboard.
 
 ### Should Have
 
-- [ ] Panic button (quick wipe of all keys)
+- [x] Panic button (quick wipe of all keys)
 - [ ] Key verification improvements (better fingerprint comparison)
-- [ ] Onboarding wizard for first-time setup
+- [x] Onboarding wizard for first-time setup
 - [ ] Settings UI (cache duration, auto-decrypt timeout)
 - [ ] Multi-language support
 
