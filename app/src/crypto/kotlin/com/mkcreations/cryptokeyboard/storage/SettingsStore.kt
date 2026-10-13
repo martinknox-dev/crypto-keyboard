@@ -52,6 +52,7 @@ class SettingsStore(context: Context) {
             putString("custom_cover_message", settings.customCoverMessage)
             putBoolean("auto_enable_exchange", settings.autoEnableExchange)
             putBoolean("smart_key_selection", settings.smartKeySelection)
+            putBoolean("scan_invites_enabled", settings.scanInvitesEnabled)
 
             // Panic (new independent-trigger schema; legacy keys are
             // migrated on read by PanicSettingsCodec and never rewritten)
@@ -87,6 +88,7 @@ class SettingsStore(context: Context) {
             customCoverMessage = prefs.getString("custom_cover_message", "") ?: "",
             autoEnableExchange = prefs.getBoolean("auto_enable_exchange", false),
             smartKeySelection = prefs.getBoolean("smart_key_selection", true),
+            scanInvitesEnabled = prefs.getBoolean("scan_invites_enabled", false),
 
             // Battery
             idleTimeoutMinutes = prefs.getInt("idle_timeout", 3),

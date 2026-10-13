@@ -29,6 +29,7 @@ import dev.patrickgold.florisboard.ime.keyboard.IncognitoMode
 import dev.patrickgold.florisboard.ime.keyboard.SpaceBarMode
 import dev.patrickgold.florisboard.ime.keyboard3.hint.FlickKeyHintPlacement
 import dev.patrickgold.florisboard.ime.keyboard3.hint.LongPressKeyHintPlacement
+import dev.patrickgold.florisboard.ime.keyboard3.KeyboardLayout
 import dev.patrickgold.florisboard.ime.landscapeinput.LandscapeInputUiMode
 import dev.patrickgold.florisboard.ime.media.emoji.EmojiHistory
 import dev.patrickgold.florisboard.ime.media.emoji.EmojiSkinTone
@@ -372,6 +373,18 @@ private val ENUM_DISPLAY_ENTRIES = mapOf<Pair<KClass<*>, String>, @Composable ()
             entry(
                 key = ImeWindowMode.FLOATING,
                 label = stringRes(R.string.enum__ime_window_mode__floating),
+            )
+        }
+    },
+    KeyboardLayout::class to DEFAULT to {
+        listPrefEntries {
+            entry(
+                key = KeyboardLayout.QWERTY,
+                label = stringRes(R.string.enum__keyboard_layout__qwerty),
+            )
+            entry(
+                key = KeyboardLayout.QWERTZ,
+                label = stringRes(R.string.enum__keyboard_layout__qwertz),
             )
         }
     },

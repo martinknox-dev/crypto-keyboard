@@ -33,6 +33,7 @@ import dev.patrickgold.florisboard.ime.keyboard3.touch.ShiftKeyBehavior
 import dev.patrickgold.florisboard.ime.keyboard.IncognitoMode
 import dev.patrickgold.florisboard.ime.keyboard.SpaceBarMode
 import dev.patrickgold.florisboard.ime.keyboard3.ImeActions
+import dev.patrickgold.florisboard.ime.keyboard3.KeyboardLayout
 import dev.patrickgold.florisboard.ime.keyboard3.interaction.InteractionTimingOptions
 import dev.patrickgold.florisboard.ime.keyboard3.touch.FnKeyAction
 import dev.patrickgold.florisboard.ime.keyboard3.touch.FnKeyArrangement
@@ -451,6 +452,10 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
 
     val keyboard = Keyboard()
     inner class Keyboard {
+        val layout = enum(
+            key = "keyboard__layout",
+            default = KeyboardLayout.DEFAULT,
+        )
         val windowConfig = custom(
             key = "keyboard__window_config",
             default = emptyMap(),

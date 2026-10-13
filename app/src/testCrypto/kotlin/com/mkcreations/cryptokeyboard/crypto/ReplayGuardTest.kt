@@ -39,6 +39,17 @@ class ReplayGuardTest : FunSpec({
         guard.isReplay("old".toByteArray()) shouldBe false
     }
 
+    test("setTtlDuration adjusts the expiry window") {
+        var now = 0L
+        val guard = ReplayGuard(ttlMs = 30L * 24 * 60 * 60 * 1000, clock = { now })
+        guard.markSeen("x".toByteArray())
+        guard.setTtlDuration(minutes = 5)
+        now = 5 * 60 * 1000L // exactly at the new boundary: still a replay
+        guard.isReplay("x".toByteArray()) shouldBe true
+        now = 5 * 60 * 1000L + 1 // one millisecond past: entry expired
+        guard.isReplay("x".toByteArray()) shouldBe false
+    }
+
     test("clear resets state") {
         val guard = ReplayGuard()
         guard.markSeen("x".toByteArray())

@@ -71,6 +71,7 @@ object CryptoBarHook {
     private var coverGenerateMethod: java.lang.reflect.Method? = null
     private var coverStyleClass: Class<*>? = null
     private var tryDecryptMethod: java.lang.reflect.Method? = null
+    private var detectInviteMethod: java.lang.reflect.Method? = null
     private var exchangeModeGetter: java.lang.reflect.Method? = null
     private var exchangeModeSetter: java.lang.reflect.Method? = null
     private var accessibilityServiceClass: Class<*>? = null
@@ -103,6 +104,7 @@ object CryptoBarHook {
             getAllKeyInfosMethod = cimClass.getMethod("getAllKeyInfos")
             setActiveKeyMethod = cimClass.getMethod("setActiveKey", String::class.java)
             tryDecryptMethod = cimClass.getMethod("tryDecrypt", String::class.java)
+            detectInviteMethod = cimClass.getMethod("detectInvite", String::class.java)
 
             val coverGenClass = Class.forName("com.mkcreations.cryptokeyboard.crypto.CoverGenerator")
             coverGeneratorInstance = coverGenClass.kotlin.objectInstance
@@ -160,6 +162,9 @@ object CryptoBarHook {
             }
             sharedStateClass!!.getMethod("setCryptoModeActive", Boolean::class.javaPrimitiveType)
                 .invoke(sharedStateInstance, newState)
+            // Bar resize shifts the chat layout above — recalculate overlay
+            // positions once the debounce lets the layout settle.
+            doRefreshOverlays()
         } catch (e: Exception) {
             Log.e(TAG, "toggleCryptoMode failed", e)
         }
@@ -175,6 +180,7 @@ object CryptoBarHook {
         if (!_isInitialized) return
         _isExpanded.value = true
         _activeField.value = CryptoField.SECRET
+        doRefreshOverlays()
     }
 
     /**
@@ -343,6 +349,7 @@ object CryptoBarHook {
         getAllKeyInfosMethod = null
         setActiveKeyMethod = null
         tryDecryptMethod = null
+        detectInviteMethod = null
         coverGeneratorInstance = null
         coverGenerateMethod = null
         coverStyleClass = null
@@ -402,6 +409,43 @@ object CryptoBarHook {
         } catch (e: Exception) {
             Log.e(TAG, "doDecrypt failed", e)
             null
+        }
+    }
+
+    /**
+     * True when [message] carries a valid in-band key invite (Path B). Reachable
+     * from the main source set via reflection; always false on the floris flavor
+     * where CryptoInputManager doesn't exist.
+     */
+    internal fun doDetectInvite(message: String): Boolean {
+        if (!_isInitialized || cryptoInputManagerInstance == null) return false
+        return try {
+            detectInviteMethod?.invoke(cryptoInputManagerInstance, message) as? Boolean ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Asks the accessibility service to kick a debounced overlay rescan so
+     * overlay positions/messages are recalculated after a known button press
+     * (e.g. secret-field expand/collapse) shifts the layout. No-op on the floris
+     * flavor, where the crypto accessibility service is absent.
+     */
+    internal fun doRefreshOverlays() {
+        if (!_isInitialized) return
+        try {
+            val serviceInstance = accessibilityServiceClass
+                ?.getDeclaredField("instance")
+                ?.apply { isAccessible = true }
+                ?.get(null)
+            if (serviceInstance != null) {
+                accessibilityServiceClass
+                    ?.getMethod("requestOverlayRefresh")
+                    ?.invoke(serviceInstance)
+            }
+        } catch (e: Exception) {
+            // floris flavor / service not connected — safe to ignore
         }
     }
 
@@ -1309,6 +1353,21 @@ private fun ClipboardDecryptButton(context: Context) {
                         val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
                         if (clipText.isNullOrEmpty()) {
                             Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                            return@clickable
+                        }
+                        // In-band key invite (Path B): launch the approval
+                        // Activity instead of showing a decrypt result panel.
+                        if (CryptoBarHook.doDetectInvite(clipText)) {
+                            val intent = Intent().setClassName(
+                                context,
+                                "com.mkcreations.cryptokeyboard.ui.KeyInviteApprovalActivity"
+                            ).putExtra("invite_raw_message", clipText)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            try {
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Invite approval unavailable", Toast.LENGTH_SHORT).show()
+                            }
                             return@clickable
                         }
                         val result = CryptoBarHook.doDecrypt(clipText)

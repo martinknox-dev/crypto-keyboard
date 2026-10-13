@@ -22,7 +22,6 @@ object PanicSettingsCodec {
     const val KEY_SHAKE = "panic_trigger_shake"
     const val KEY_FACE_DOWN = "panic_trigger_face_down"
     const val KEY_SPACEBAR = "panic_trigger_spacebar"
-    const val KEY_VOLUME = "panic_trigger_volume_sequence"
     const val KEY_SWITCH_IME = "panic_action_switch_ime"
     const val KEY_REMOVE_OVERLAYS = "panic_action_remove_overlays"
     const val KEY_CLEAR_CACHE = "panic_action_clear_cache"
@@ -49,7 +48,6 @@ object PanicSettingsCodec {
                 panicTriggerShake = prefs.boolean(KEY_SHAKE, base.panicTriggerShake),
                 panicTriggerFaceDown = prefs.boolean(KEY_FACE_DOWN, base.panicTriggerFaceDown),
                 panicTriggerSpacebar = prefs.boolean(KEY_SPACEBAR, base.panicTriggerSpacebar),
-                panicTriggerVolumeSequence = prefs.boolean(KEY_VOLUME, base.panicTriggerVolumeSequence),
                 panicActionSwitchIme = prefs.boolean(KEY_SWITCH_IME, base.panicActionSwitchIme),
                 panicActionRemoveOverlays = prefs.boolean(KEY_REMOVE_OVERLAYS, base.panicActionRemoveOverlays),
                 panicActionClearCache = prefs.boolean(KEY_CLEAR_CACHE, base.panicActionClearCache),
@@ -69,7 +67,6 @@ object PanicSettingsCodec {
             panicTriggerShake = legacyTrigger == "SHAKE",
             panicTriggerFaceDown = legacyTrigger == "SCREEN_DOWN",
             panicTriggerSpacebar = false,
-            panicTriggerVolumeSequence = false,
             panicActionSwitchIme = prefs.boolean(KEY_LEGACY_SWITCH, base.panicActionSwitchIme),
             panicActionRemoveOverlays = prefs.boolean(KEY_LEGACY_REMOVE_OVERLAYS, base.panicActionRemoveOverlays),
             // Combined cache+lock toggle: ON if either legacy toggle wanted it.
@@ -85,7 +82,6 @@ object PanicSettingsCodec {
         KEY_SHAKE to settings.panicTriggerShake,
         KEY_FACE_DOWN to settings.panicTriggerFaceDown,
         KEY_SPACEBAR to settings.panicTriggerSpacebar,
-        KEY_VOLUME to settings.panicTriggerVolumeSequence,
         KEY_SWITCH_IME to settings.panicActionSwitchIme,
         KEY_REMOVE_OVERLAYS to settings.panicActionRemoveOverlays,
         KEY_CLEAR_CACHE to settings.panicActionClearCache,

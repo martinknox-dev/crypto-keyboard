@@ -9,13 +9,23 @@ import java.security.MessageDigest
  */
 class ReplayGuard(
     private val maxEntries: Int = 2_000,
-    private val ttlMs: Long = 30L * 24 * 60 * 60 * 1000,
+    private var ttlMs: Long = 30L * 24 * 60 * 60 * 1000,
     private val clock: () -> Long = System::currentTimeMillis
 ) {
     private data class Entry(val seenAt: Long)
 
     // accessOrder=true gives LRU behavior on get
     private val entries = LinkedHashMap<String, Entry>(16, 0.75f, true)
+
+    /**
+     * Sets the replay window in minutes. Driven by the same cache duration
+     * setting as [DecryptCache] so both stores forget history together
+     * (reboot semantics, see SECURITY.md).
+     */
+    @Synchronized
+    fun setTtlDuration(minutes: Int) {
+        ttlMs = minutes * 60 * 1000L
+    }
 
     @Synchronized
     fun isReplay(payload: ByteArray): Boolean {

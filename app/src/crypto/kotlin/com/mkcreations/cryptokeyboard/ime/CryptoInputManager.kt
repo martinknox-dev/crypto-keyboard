@@ -3,6 +3,7 @@ package com.mkcreations.cryptokeyboard.ime
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
+import com.mkcreations.cryptokeyboard.accessibility.CryptoAccessibilityService
 import com.mkcreations.cryptokeyboard.core.SharedState
 import com.mkcreations.cryptokeyboard.crypto.MessageProcessor
 import com.mkcreations.cryptokeyboard.model.CoverStyle
@@ -109,8 +110,21 @@ class CryptoInputManager(private val context: Context) {
             is MessageProcessor.DecryptResult.Replayed -> {
                 DecryptionResult.Error("Duplicate message rejected (replay)")
             }
+            is MessageProcessor.DecryptResult.KeyInvite -> {
+                // Not a decryptable message — routed to the invite approval flow
+                // via detectInvite()/Path B; never shown as a decrypt error.
+                DecryptionResult.NotEncrypted
+            }
         }
     }
+
+    /**
+     * True when the clipboard/message carries a valid in-band key invite.
+     * Checked before [tryDecrypt] by the keyboard-bar Decrypt button (Path B)
+     * so invites launch the approval flow instead of a decrypt result panel.
+     */
+    fun detectInvite(message: String): Boolean =
+        MessageProcessor.extractInvite(message) != null
 
     /**
      * Gets info about the currently active key
@@ -158,6 +172,9 @@ class CryptoInputManager(private val context: Context) {
             val keyStore = SecureKeyStore.getInstance(context)
             keyStore.setActiveKeyId(keyId)
             SharedState.activeKeyId = keyId
+            // Reboot semantics: switching the active key forgets session memory
+            // and re-locates messages live with the newly active key.
+            CryptoAccessibilityService.instance?.onKeysChanged()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to set active key", e)
         }

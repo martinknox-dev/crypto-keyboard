@@ -86,6 +86,10 @@ object MessageProcessor {
         keys: List<CipherKey>
     ): DecryptResult {
 
+        // In-band key invitation: recognized by magic bytes before any
+        // decryption is attempted — routed to the approval flow, not decrypted.
+        extractInvite(message)?.let { return DecryptResult.KeyInvite(it) }
+
         // Check if message contains invisible data
         if (!InvisibleEncoder.containsHiddenData(message)) {
             // NO_COVER path: message may be a raw base64 payload
@@ -111,6 +115,31 @@ object MessageProcessor {
         }
 
         return decryptAndTrack(encryptedBytes, keys, InvisibleEncoder.extractCoverMessage(message))
+    }
+
+    /**
+     * Extracts a key-invite envelope, or null when the message is not an
+     * invite. Tries the hidden-data channel first, then the raw Base64
+     * NO_COVER path. A malformed/truncated envelope degrades to null so the
+     * caller falls through to normal decryption (never a raw error toast).
+     */
+    fun extractInvite(message: String): InviteEnvelope? {
+        val raw: ByteArray = (if (InvisibleEncoder.containsHiddenData(message)) {
+            when (val out = InvisibleEncoder.extractFromMessage(message)) {
+                is InvisibleEncoder.ExtractOutcome.Success -> out.data
+                InvisibleEncoder.ExtractOutcome.NotPresent,
+                InvisibleEncoder.ExtractOutcome.Malformed -> null
+            }
+        } else {
+            try {
+                java.util.Base64.getDecoder().decode(message.trim())
+            } catch (e: IllegalArgumentException) {
+                null
+            }
+        }) ?: return null
+        if (raw.size < InviteEnvelope.FIXED_SIZE) return null
+        if (raw[0] != InviteEnvelope.MAGIC[0] || raw[1] != InviteEnvelope.MAGIC[1]) return null
+        return InviteEnvelope.deserialize(raw).getOrNull()
     }
 
     /**
@@ -212,5 +241,7 @@ object MessageProcessor {
         object Replayed : DecryptResult()
         data class NoMatchingKey(val fingerprint: String) : DecryptResult()
         object DecryptionFailed : DecryptResult()
+        /** In-band key invitation — carries the raw envelope for approval. */
+        data class KeyInvite(val envelope: InviteEnvelope) : DecryptResult()
     }
 }

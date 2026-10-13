@@ -18,6 +18,8 @@ data class AppSettings(
     val customCoverMessage: String = "",
     val autoEnableExchange: Boolean = false,
     val smartKeySelection: Boolean = true,
+    // Key invitations — opt-in screen scan for in-band invites (off by default)
+    val scanInvitesEnabled: Boolean = false,
 
     // Panic — master switch (off = whole panic system disarmed)
     val panicEnabled: Boolean = false,
@@ -25,7 +27,6 @@ data class AppSettings(
     val panicTriggerShake: Boolean = true,
     val panicTriggerFaceDown: Boolean = false,
     val panicTriggerSpacebar: Boolean = false,
-    val panicTriggerVolumeSequence: Boolean = false,
     // Panic — actions
     val panicActionSwitchIme: Boolean = true,
     val panicActionRemoveOverlays: Boolean = true,   // also disables exchange mode

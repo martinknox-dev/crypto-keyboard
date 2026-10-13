@@ -44,6 +44,10 @@ import dev.patrickgold.florisboard.lib.compose.FlorisScreen
 import com.mkcreations.cryptokeyboard.storage.SecureKeyStore
 import com.mkcreations.cryptokeyboard.crypto.KeyGenerator
 import com.mkcreations.cryptokeyboard.crypto.KeyExporter
+import com.mkcreations.cryptokeyboard.accessibility.CryptoAccessibilityService
+import com.mkcreations.cryptokeyboard.crypto.InviteEnvelope
+import com.mkcreations.cryptokeyboard.crypto.InvisibleEncoder
+import com.mkcreations.cryptokeyboard.crypto.CoverGenerator
 import com.mkcreations.cryptokeyboard.crypto.QrCodeHelper
 import com.mkcreations.cryptokeyboard.model.CipherKey
 import com.mkcreations.cryptokeyboard.model.CoverStyle
@@ -75,6 +79,9 @@ fun KeyManagementScreen() = FlorisScreen {
     var showQrDisplayFor by remember { mutableStateOf<CipherKey?>(null) }
     var showQrScanner by remember { mutableStateOf(false) }
     var showImportDropdown by remember { mutableStateOf(false) }
+    var showCoverShareFor by remember { mutableStateOf<CipherKey?>(null) }
+    var coverText by remember { mutableStateOf("") }
+    var inviteNote by remember { mutableStateOf("") }
 
     // Input States
     var newKeyAlias by remember { mutableStateOf("") }
@@ -288,6 +295,7 @@ fun KeyManagementScreen() = FlorisScreen {
                                         store.setActiveKeyId(scannedKey.id)
                                     }
                                 }
+                                CryptoAccessibilityService.instance?.onKeysChanged()
 
                                 withContext(Dispatchers.Main) {
                                     refreshKeys()
@@ -449,6 +457,7 @@ fun KeyManagementScreen() = FlorisScreen {
                                             store.setActiveKeyId(newKey.id)
                                         }
                                     }
+                                    CryptoAccessibilityService.instance?.onKeysChanged()
 
                                     refreshKeys()
                                     showGenerateDialog = false
@@ -705,6 +714,7 @@ fun KeyManagementScreen() = FlorisScreen {
                                     withContext(Dispatchers.IO) {
                                         store.saveKey(newKey)
                                     }
+                                    CryptoAccessibilityService.instance?.onKeysChanged()
 
                                     refreshKeys()
                                     showImportPhraseDialog = false
@@ -930,6 +940,70 @@ fun KeyManagementScreen() = FlorisScreen {
         }
 
         // =============================================
+        // DIALOG: SHARE VIA COVER MESSAGE (in-band key invite sender)
+        // =============================================
+        showCoverShareFor?.let { shareKey ->
+            AlertDialog(
+                onDismissRequest = { showCoverShareFor = null },
+                title = { Text("Share via Cover Message") },
+                text = {
+                    Column {
+                        Text(
+                            "Sends a fresh pairing key to a contact inside an ordinary-looking message.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = coverText,
+                            onValueChange = { coverText = it },
+                            label = { Text("Cover text (blank = random)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = inviteNote,
+                            onValueChange = { inviteNote = it },
+                            label = { Text("Greeting / note (optional)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Row {
+                        OutlinedButton(onClick = {
+                            val finalMsg = buildCoverInviteMessage(coverText, inviteNote)
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Cover Message", finalMsg))
+                            Toast.makeText(context, "Cover message copied to clipboard", Toast.LENGTH_SHORT).show()
+                            showCoverShareFor = null
+                        }) {
+                            Text("📋 Copy")
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Button(onClick = {
+                            val finalMsg = buildCoverInviteMessage(coverText, inviteNote)
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, finalMsg)
+                            }
+                            context.startActivity(Intent.createChooser(intent, "Share Cover Message"))
+                            showCoverShareFor = null
+                        }) {
+                            Text("Share…")
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCoverShareFor = null }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        // =============================================
         // DIALOG: KEY DETAILS (view phrases + QR button)
         // =============================================
         showKeyDetailsFor?.let { key ->
@@ -1032,6 +1106,21 @@ fun KeyManagementScreen() = FlorisScreen {
                             Text("Share Phrase")
                         }
 
+                        // Share a fresh pairing key hidden in a cover message
+                        OutlinedButton(
+                            onClick = {
+                                showKeyDetailsFor = null
+                                coverText = ""
+                                inviteNote = ""
+                                showCoverShareFor = key
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.FileUpload, contentDescription = "Cover")
+                            Spacer(Modifier.width(8.dp))
+                            Text("Share via Cover Message")
+                        }
+
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
@@ -1091,6 +1180,7 @@ fun KeyManagementScreen() = FlorisScreen {
                                     withContext(Dispatchers.IO) {
                                         store.deleteKey(key.id)
                                     }
+                                    CryptoAccessibilityService.instance?.onKeysChanged()
                                     refreshKeys()
                                 } catch (e: Exception) {
                                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -1102,6 +1192,18 @@ fun KeyManagementScreen() = FlorisScreen {
             }
         }
     }
+}
+
+/**
+ * Builds the sender side of an in-band key invite: a fresh pairing key packed
+ * into an [InviteEnvelope], hidden inside a cover message via [InvisibleEncoder].
+ * Blank cover text falls back to a randomly generated cover.
+ */
+private fun buildCoverInviteMessage(coverText: String, note: String): String {
+    val freshKey = KeyGenerator.generateKey()
+    val envelope = InviteEnvelope.serialize(freshKey, note.trim())
+    val cover = coverText.trim().ifEmpty { CoverGenerator.generate(CoverStyle.RANDOM_CASUAL) }
+    return InvisibleEncoder.embedInCover(envelope, cover)
 }
 
 // --- Data class for phrase dialog ---

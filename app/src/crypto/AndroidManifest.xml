@@ -34,5 +34,13 @@
             android:launchMode="singleTop"
             android:theme="@android:style/Theme.Material.NoActionBar" />
 
+        <!-- In-band key invitation review/approval, launched from overlay tap or decrypt button -->
+        <activity
+            android:name="com.mkcreations.cryptokeyboard.ui.KeyInviteApprovalActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
     </application>
 </manifest>

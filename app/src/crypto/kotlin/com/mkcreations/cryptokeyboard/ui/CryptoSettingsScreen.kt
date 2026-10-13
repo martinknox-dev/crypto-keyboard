@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.*
@@ -51,6 +52,52 @@ fun CryptoSettingsScreen() = FlorisScreen {
             SettingsStore.getInstance(context).loadSettings().pinHash.isNotEmpty()
         )
     }
+    var inviteSettings by remember {
+        mutableStateOf(SettingsStore.getInstance(context).loadSettings())
+    }
+
+    val toggleExchangeMode: () -> Unit = {
+        if (!isAccessibilityEnabled) {
+            Toast.makeText(
+                context,
+                "Enable Accessibility Service first",
+                Toast.LENGTH_LONG
+            ).show()
+        } else {
+            val newState = !isExchangeMode
+            SharedState.isExchangeModeActive = newState
+            isExchangeMode = newState
+            CryptoAccessibilityService.instance?.onExchangeModeChanged(newState)
+            Toast.makeText(
+                context,
+                if (newState) "Exchange Mode enabled" else "Exchange Mode disabled",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    val toggleInviteScan: () -> Unit = {
+        if (!isAccessibilityEnabled) {
+            Toast.makeText(
+                context,
+                "Enable Accessibility Service first",
+                Toast.LENGTH_LONG
+            ).show()
+        } else {
+            val next = !inviteSettings.scanInvitesEnabled
+            val updated = inviteSettings.copy(scanInvitesEnabled = next)
+            inviteSettings = updated
+            SettingsStore.getInstance(context).saveSettings(updated)
+            // Refreshes the service's settings snapshot so the new gate value applies.
+            CryptoAccessibilityService.instance?.refreshPanicTriggers()
+            Toast.makeText(
+                context,
+                if (next) "Invite scanning on" else "Invite scanning off",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
     val coroutineScope = rememberCoroutineScope()
 
     content {
@@ -68,32 +115,17 @@ fun CryptoSettingsScreen() = FlorisScreen {
         PreferenceGroup(title = "Exchange Mode") {
             Preference(
                 icon = Icons.Default.SwapHoriz,
-                title = if (isExchangeMode) "Exchange Mode: ON" else "Exchange Mode: OFF",
+                title = "Exchange Mode",
                 summary = if (isExchangeMode)
-                    "Screen scanning active — encrypted messages will be decrypted automatically"
+                    "On — screen scanning active, encrypted messages decrypt automatically"
                 else
-                    "Tap to enable automatic decryption of on-screen messages",
-                onClick = {
-                    if (!isAccessibilityEnabled) {
-                        Toast.makeText(
-                            context,
-                            "Enable Accessibility Service first",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        return@Preference
-                    }
-                    val newState = !isExchangeMode
-                    SharedState.isExchangeModeActive = newState
-                    isExchangeMode = newState
-
-                    // Notify the accessibility service
-                    CryptoAccessibilityService.instance?.onExchangeModeChanged(newState)
-
-                    Toast.makeText(
-                        context,
-                        if (newState) "Exchange Mode enabled" else "Exchange Mode disabled",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    "Off — turn on to decrypt on-screen messages automatically",
+                onClick = { toggleExchangeMode() },
+                trailing = {
+                    Switch(
+                        checked = isExchangeMode,
+                        onCheckedChange = { toggleExchangeMode() },
+                    )
                 }
             )
 
@@ -112,6 +144,27 @@ fun CryptoSettingsScreen() = FlorisScreen {
                     } catch (e: Exception) {
                         Toast.makeText(context, "Cannot open settings", Toast.LENGTH_SHORT).show()
                     }
+                }
+            )
+        }
+
+        PreferenceGroup(title = "Key Invitations") {
+            Preference(
+                icon = Icons.Default.Share,
+                title = "Scan for Active Invites",
+                summary = if (inviteSettings.scanInvitesEnabled)
+                    "On — while Exchange Mode is on, key invitations in on-screen " +
+                        "messages are detected and shown as a tappable bubble"
+                else
+                    "Off — invites won't be detected on screen. Copy the invite " +
+                        "message, then tap the clipboard paste button on the keyboard " +
+                        "bar to open it instead",
+                onClick = { toggleInviteScan() },
+                trailing = {
+                    Switch(
+                        checked = inviteSettings.scanInvitesEnabled,
+                        onCheckedChange = { toggleInviteScan() },
+                    )
                 }
             )
         }

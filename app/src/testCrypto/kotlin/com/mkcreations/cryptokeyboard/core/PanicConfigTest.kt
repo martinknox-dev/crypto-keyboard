@@ -22,14 +22,13 @@ class PanicConfigTest : FunSpec({
         PanicConfig.isArmed(armedShake) shouldBe true
     }
 
-    test("when master off only master and switch-ime toggles are interactive") {
+    test("when master off only the master toggle is interactive") {
         val off = AppSettings()
         PanicConfig.isToggleEnabled(off, PanicToggle.MASTER) shouldBe true
-        PanicConfig.isToggleEnabled(off, PanicToggle.ACTION_SWITCH_IME) shouldBe true
         PanicConfig.isToggleEnabled(off, PanicToggle.TRIGGER_SHAKE) shouldBe false
         PanicConfig.isToggleEnabled(off, PanicToggle.TRIGGER_FACE_DOWN) shouldBe false
         PanicConfig.isToggleEnabled(off, PanicToggle.TRIGGER_SPACEBAR) shouldBe false
-        PanicConfig.isToggleEnabled(off, PanicToggle.TRIGGER_VOLUME) shouldBe false
+        PanicConfig.isToggleEnabled(off, PanicToggle.ACTION_SWITCH_IME) shouldBe false
         PanicConfig.isToggleEnabled(off, PanicToggle.ACTION_REMOVE_OVERLAYS) shouldBe false
         PanicConfig.isToggleEnabled(off, PanicToggle.ACTION_CLEAR_CACHE) shouldBe false
         PanicConfig.isToggleEnabled(off, PanicToggle.ACTION_WIPE_KEYS) shouldBe false

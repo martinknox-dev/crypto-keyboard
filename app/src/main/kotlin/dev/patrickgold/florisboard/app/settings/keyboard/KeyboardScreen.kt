@@ -48,6 +48,7 @@ import dev.patrickgold.florisboard.ime.keyboard.SpaceBarMode
 import dev.patrickgold.florisboard.ime.keyboard3.hint.FlickKeyHintPlacement
 import dev.patrickgold.florisboard.ime.keyboard3.hint.LongPressKeyHintPlacement
 import dev.patrickgold.florisboard.ime.keyboard3.interaction.LocalInteractionController
+import dev.patrickgold.florisboard.ime.keyboard3.KeyboardLayout
 import dev.patrickgold.florisboard.ime.landscapeinput.LandscapeInputUiMode
 import dev.patrickgold.florisboard.ime.smartbar.IncognitoDisplayMode
 import dev.patrickgold.florisboard.lib.compose.FlorisScreen
@@ -81,6 +82,11 @@ fun KeyboardScreen() = FlorisScreen {
     val systemTimingOptions by interactionController.activeSystemTimingOptions.collectAsState()
 
     content {
+        ListPreference(
+            prefs.keyboard.layout,
+            title = stringRes(R.string.pref__keyboard__layout__label),
+            entries = enumDisplayEntriesOf(KeyboardLayout::class),
+        )
         SwitchPreference(
             prefs.keyboard.numberRow,
             title = stringRes(R.string.pref__keyboard__number_row__label),

@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/crypto_accessibility_description"
-    android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewTextChanged"
+    android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewTextChanged|typeViewClicked"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds|flagIncludeNotImportantViews|flagRequestFilterKeyEvents"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds|flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="true"
     android:notificationTimeout="300"
     android:settingsActivity="dev.patrickgold.florisboard.app.FlorisAppActivity" />

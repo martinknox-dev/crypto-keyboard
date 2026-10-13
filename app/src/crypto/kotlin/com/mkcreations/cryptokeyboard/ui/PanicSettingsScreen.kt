@@ -26,9 +26,8 @@ import dev.patrickgold.jetpref.datastore.ui.PreferenceGroup
  * Panic Actions settings: one master switch, independent triggers, and the
  * effects a panic run executes.
  *
- * While the master switch is off, every trigger toggle is locked — and among
- * the actions only "switch to previous keyboard" stays editable (user
- * decision; it also defaults to on).
+ * While the master switch is off, every trigger and every action toggle is
+ * locked — only the master switch itself stays editable.
  */
 @Composable
 fun PanicSettingsScreen() = FlorisScreen {
@@ -103,13 +102,6 @@ fun PanicSettingsScreen() = FlorisScreen {
                 checked = settings.panicTriggerSpacebar,
                 enabled = PanicConfig.isToggleEnabled(settings, PanicToggle.TRIGGER_SPACEBAR),
                 onCheckedChange = { persist(settings.copy(panicTriggerSpacebar = it)) },
-            )
-            PanicSwitchRow(
-                title = "Hardware key sequence",
-                summary = "Triple-press Volume Down within 1.5 seconds",
-                checked = settings.panicTriggerVolumeSequence,
-                enabled = PanicConfig.isToggleEnabled(settings, PanicToggle.TRIGGER_VOLUME),
-                onCheckedChange = { persist(settings.copy(panicTriggerVolumeSequence = it)) },
             )
         }
 

@@ -40,13 +40,18 @@ class OverlayManager(private val context: Context) {
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val activeOverlays = ConcurrentHashMap<String, OverlayEntry>()
+    private val activeInviteBubbles = ConcurrentHashMap<String, OverlayEntry>()
+
+    /** Raw message each invite bubble was created from — keyed by bubble id. */
+    private val inviteBubbleRawMessages = ConcurrentHashMap<String, String>()
     private var maxOverlays = 15
 
     data class OverlayEntry(
         val view: View,
         val params: WindowManager.LayoutParams,
         val bounds: Rect,
-        val timestamp: Long
+        val timestamp: Long,
+        val sourcePackage: String
     )
 
     fun setMaxOverlays(max: Int) {
@@ -57,7 +62,8 @@ class OverlayManager(private val context: Context) {
         overlayId: String,
         decryptedText: String,
         keyLabel: String,
-        bounds: Rect
+        bounds: Rect,
+        sourcePackage: String
     ) {
         if (activeOverlays.size >= maxOverlays && !activeOverlays.containsKey(overlayId)) {
             removeOldestOverlay()
@@ -81,7 +87,8 @@ class OverlayManager(private val context: Context) {
                 view = overlayView,
                 params = params,
                 bounds = Rect(bounds),
-                timestamp = System.currentTimeMillis()
+                timestamp = System.currentTimeMillis(),
+                sourcePackage = sourcePackage
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to show overlay: $overlayId", e)
@@ -141,6 +148,8 @@ class OverlayManager(private val context: Context) {
                 Log.e(TAG, "Remove failed: $id", e)
             }
         }
+        // Invite bubbles are full-screen cleanup too (panic, window change).
+        removeAllInviteBubbles()
     }
 
     fun removeOverlaysOutsideBounds(screenHeight: Int, screenWidth: Int) {
@@ -159,6 +168,130 @@ class OverlayManager(private val context: Context) {
     fun hasOverlay(overlayId: String): Boolean = activeOverlays.containsKey(overlayId)
     fun getActiveOverlayIds(): Set<String> = activeOverlays.keys.toSet()
     fun overlayCount(): Int = activeOverlays.size
+
+    // ================================================================
+    // INVITE BUBBLE (touchable — tap launches the approval Activity)
+    // ================================================================
+
+    /**
+     * Layout params for a tappable bubble. Unlike decrypt overlays, this drops
+     * FLAG_NOT_TOUCHABLE so the bubble receives taps; it keeps
+     * FLAG_NOT_FOCUSABLE so it never steals IME focus.
+     */
+    private fun createInviteLayoutParams(bounds: Rect): WindowManager.LayoutParams =
+        createLayoutParams(bounds).apply {
+            flags = flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        }
+
+    /**
+     * Shows a tappable "key invite" bubble. Tapping it invokes [onTap] with
+     * [rawMessage], which launches the approval Activity. Idempotent per id.
+     */
+    fun showInviteBubble(
+        overlayId: String,
+        rawMessage: String,
+        bounds: Rect,
+        sourcePackage: String,
+        onTap: (String) -> Unit
+    ) {
+        if (activeInviteBubbles.containsKey(overlayId)) return
+
+        inviteBubbleRawMessages[overlayId] = rawMessage
+        val bubble = TextView(context).apply {
+            text = "\uD83D\uDD11 Key invite \u2014 tap to review"
+            setTextColor(0xFFFFFFFF.toInt())
+            setBackgroundColor(0xF56A1B9A.toInt())
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            textSize = 13f
+            setOnClickListener {
+                // Detach the bubble immediately so it can't linger over the
+                // approval Activity. If the invite is still pending when the
+                // user returns, the next scan re-shows it.
+                removeInviteBubble(overlayId)
+                onTap(rawMessage)
+            }
+        }
+        val params = createInviteLayoutParams(bounds)
+        try {
+            windowManager.addView(bubble, params)
+            activeInviteBubbles[overlayId] = OverlayEntry(
+                view = bubble,
+                params = params,
+                bounds = Rect(bounds),
+                timestamp = System.currentTimeMillis(),
+                sourcePackage = sourcePackage
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to show invite bubble: $overlayId", e)
+        }
+    }
+
+    fun removeInviteBubble(overlayId: String) {
+        inviteBubbleRawMessages.remove(overlayId)
+        val entry = activeInviteBubbles.remove(overlayId) ?: return
+        try {
+            windowManager.removeView(entry.view)
+        } catch (e: Exception) {
+            Log.e(TAG, "Remove invite bubble failed: $overlayId", e)
+        }
+    }
+
+    fun removeAllInviteBubbles() {
+        val ids = activeInviteBubbles.keys.toList()
+        ids.forEach { removeInviteBubble(it) }
+    }
+
+    /**
+     * Removes every visible invite bubble whose raw message satisfies
+     * [shouldRemove]. Used when an invite is accepted (possibly via the
+     * clipboard path, while the same invite still shows as a bubble): the
+     * acceptance must clear the bubble immediately, not on the next scan.
+     */
+    fun removeInviteBubblesWhere(shouldRemove: (String) -> Boolean) {
+        val ids = inviteBubbleRawMessages.entries
+            .filter { shouldRemove(it.value) }
+            .map { it.key }
+        ids.forEach { removeInviteBubble(it) }
+    }
+
+    /**
+     * Removes every overlay (decrypt and invite) that was NOT produced by [pkg].
+     * Called on a foreground app switch so the old app's overlays can never be
+     * orphaned over a new app or the home screen. A no-op when all overlays
+     * already belong to [pkg].
+     */
+    fun removeOverlaysNotFrom(pkg: String) {
+        val staleOverlays = activeOverlays.entries.filter { it.value.sourcePackage != pkg }.map { it.key }
+        staleOverlays.forEach { removeOverlay(it) }
+
+        val staleBubbles = activeInviteBubbles.entries.filter { it.value.sourcePackage != pkg }.map { it.key }
+        staleBubbles.forEach { removeInviteBubble(it) }
+    }
+
+    /**
+     * All overlay ids currently attached, covering both decrypt overlays and
+     * invite bubbles. Used by the reconcile pass to detect stale overlays.
+     */
+    fun activeOverlayIds(): Set<String> {
+        val ids = mutableSetOf<String>()
+        ids.addAll(activeOverlays.keys)
+        ids.addAll(activeInviteBubbles.keys)
+        return ids
+    }
+
+    /**
+     * Removes the given overlay ids (decrypt overlays and invite bubbles alike).
+     * A no-op for any id that is not currently attached.
+     */
+    fun removeOverlaysByIds(ids: Collection<String>) {
+        ids.forEach { id ->
+            if (activeOverlays.containsKey(id)) {
+                removeOverlay(id)
+            } else if (activeInviteBubbles.containsKey(id)) {
+                removeInviteBubble(id)
+            }
+        }
+    }
 
     // ================================================================
     // VIEW CREATION

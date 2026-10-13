@@ -21,6 +21,7 @@ import dev.patrickgold.florisboard.ime.io.FlorisRef
 import dev.patrickgold.florisboard.ime.io.Storage
 import dev.patrickgold.florisboard.ime.io.readText
 import dev.patrickgold.florisboard.ime.keyboard3.ImeController
+import dev.patrickgold.florisboard.ime.keyboard3.KeyboardLayout
 import dev.patrickgold.florisboard.lib.devtools.flogError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -37,7 +38,11 @@ private val SCOPE_FOUNDATION = K3Descriptor("fl", "ext", "org.florisboard.k3.fou
 
 // TODO this is just a placeholder testing code, must be replaced by proper logic & extension-aware logic
 @OptIn(WillRequireMigrationToRichErrors::class)
-suspend fun loadFoundationKeyboard(imeController: ImeController, storage: Storage) {
+suspend fun loadFoundationKeyboard(
+    imeController: ImeController,
+    storage: Storage,
+    layout: KeyboardLayout = KeyboardLayout.DEFAULT,
+) {
     suspend fun loadAssetFile(path: String): TextSourceFile {
         val xml = withContext(Dispatchers.IO) {
             val ref = FlorisRef.assets("extensions/org.florisboard.k3.foundation/$path")
@@ -58,7 +63,7 @@ suspend fun loadFoundationKeyboard(imeController: ImeController, storage: Storag
         displays = listOf("flex://org.florisboard.k3.foundation/displays-implied.xml"),
         keys = listOf("flex://org.florisboard.k3.foundation/keys-implied.xml"),
     )
-    val file = loadAssetFile("keyboard/qwertz.xml")
+    val file = loadAssetFile(layout.assetPath)
     val result = file.compileToModel(importResolver, impliedImports)
     for (report in result.reports) {
         flogError { report.cause?.stackTraceToString() ?: "" }

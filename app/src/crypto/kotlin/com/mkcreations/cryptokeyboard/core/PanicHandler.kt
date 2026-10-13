@@ -7,8 +7,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.util.Log
 // Removed old AccessibilityService import
-import com.mkcreations.cryptokeyboard.crypto.DecryptCache
-import com.mkcreations.cryptokeyboard.crypto.ReplayGuard
+import com.mkcreations.cryptokeyboard.crypto.CryptoSession
 import com.mkcreations.cryptokeyboard.model.AppSettings
 import com.mkcreations.cryptokeyboard.storage.SecureKeyStore
 import com.mkcreations.cryptokeyboard.storage.SettingsStore
@@ -63,7 +62,7 @@ class PanicHandler(private val context: Context) : SensorEventListener {
         isListening = false
     }
 
-    /** External triggers (volume sequence, spacebar gestures) enter here. */
+    /** External triggers (spacebar gestures) enter here. */
     fun triggerPanic() {
         executePanic()
     }
@@ -192,8 +191,7 @@ class PanicHandler(private val context: Context) : SensorEventListener {
                     }
                     // Flush plaintext caches and force the app to relock.
                     PanicAction.CLEAR_CACHE_AND_LOCK -> {
-                        DecryptCache.clearAll()
-                        ReplayGuard.shared.clear()
+                        CryptoSession.forgetAll()
                         SettingsStore.getInstance(context).forceRelock()
                     }
                     PanicAction.SWITCH_IME -> switchKeyboard()

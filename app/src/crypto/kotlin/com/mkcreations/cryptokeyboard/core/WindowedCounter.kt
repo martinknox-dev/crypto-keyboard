@@ -4,8 +4,7 @@ package com.mkcreations.cryptokeyboard.core
  * Counts events that occur close together in time and fires once
  * [requiredCount] of them land inside [windowMs], then resets.
  *
- * Used for the volume triple-press (3 within 1.5 s) and the spacebar
- * triple-tap (3 within 0.7 s) panic triggers.
+ * Used for the spacebar triple-tap (3 within 0.7 s) panic trigger.
  */
 class WindowedCounter(
     private val requiredCount: Int,

@@ -8,7 +8,6 @@ enum class PanicToggle {
     TRIGGER_SHAKE,
     TRIGGER_FACE_DOWN,
     TRIGGER_SPACEBAR,
-    TRIGGER_VOLUME,
     ACTION_SWITCH_IME,
     ACTION_REMOVE_OVERLAYS,
     ACTION_CLEAR_CACHE,
@@ -23,18 +22,18 @@ object PanicConfig {
 
     fun anyTrigger(s: AppSettings): Boolean =
         s.panicTriggerShake || s.panicTriggerFaceDown ||
-            s.panicTriggerSpacebar || s.panicTriggerVolumeSequence
+            s.panicTriggerSpacebar
 
     /** The system only fires when the master switch is on AND a trigger is on. */
     fun isArmed(s: AppSettings): Boolean = s.panicEnabled && anyTrigger(s)
 
     /**
      * While the master switch is off, everything is locked except the master
-     * itself and the switch-IME action (user decision: the keyboard-switch
-     * option stays usable and defaults to on).
+     * itself — every trigger and every action, including switch-IME, is only
+     * editable once panic is armed.
      */
     fun isToggleEnabled(s: AppSettings, toggle: PanicToggle): Boolean = when (toggle) {
-        PanicToggle.MASTER, PanicToggle.ACTION_SWITCH_IME -> true
+        PanicToggle.MASTER -> true
         else -> s.panicEnabled
     }
 

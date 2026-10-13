@@ -19,7 +19,11 @@ object ScreenScanner {
     /**
      * Scans the current screen for text nodes containing hidden encrypted data
      */
-    fun findEncryptedNodes(rootNode: AccessibilityNodeInfo?): List<EncryptedNode> {
+    fun findEncryptedNodes(
+        rootNode: AccessibilityNodeInfo?,
+        maxDepth: Int = 20,
+        maxNodes: Int = 15
+    ): List<EncryptedNode> {
         if (rootNode == null) return emptyList()
 
         // Skip system UI
@@ -27,17 +31,19 @@ object ScreenScanner {
         if (pkg == "com.android.systemui" || pkg == "android") return emptyList()
 
         val results = mutableListOf<EncryptedNode>()
-        scanNode(rootNode, results, 0)
+        scanNode(rootNode, results, 0, maxDepth, maxNodes)
         return results
     }
 
     private fun scanNode(
         node: AccessibilityNodeInfo,
         results: MutableList<EncryptedNode>,
-        depth: Int
+        depth: Int,
+        maxDepth: Int,
+        maxNodes: Int
     ) {
-        if (depth > 20) return
-        if (results.size >= 15) return
+        if (depth > maxDepth) return
+        if (results.size >= maxNodes) return
 
         try {
             // Never read password/PIN fields (spec: skip isPassword + password-like hints)
@@ -96,7 +102,7 @@ object ScreenScanner {
             for (i in 0 until childCount) {
                 val child = node.getChild(i) ?: continue
                 try {
-                    scanNode(child, results, depth + 1)
+                    scanNode(child, results, depth + 1, maxDepth, maxNodes)
                 } finally {
                     child.recycle()
                 }
@@ -126,13 +132,13 @@ object ScreenScanner {
     /**
      * Quick check if screen likely contains any encrypted content
      */
-    fun quickCheck(rootNode: AccessibilityNodeInfo?): Boolean {
+    fun quickCheck(rootNode: AccessibilityNodeInfo?, maxDepth: Int = 10): Boolean {
         if (rootNode == null) return false
-        return quickCheckNode(rootNode, 0)
+        return quickCheckNode(rootNode, 0, maxDepth)
     }
 
-    private fun quickCheckNode(node: AccessibilityNodeInfo, depth: Int): Boolean {
-        if (depth > 10) return false
+    private fun quickCheckNode(node: AccessibilityNodeInfo, depth: Int, maxDepth: Int): Boolean {
+        if (depth > maxDepth) return false
 
         try {
             val hint = node.hintText?.toString()
@@ -154,7 +160,7 @@ object ScreenScanner {
             for (i in 0 until node.childCount.coerceAtMost(15)) {
                 val child = node.getChild(i) ?: continue
                 try {
-                    if (quickCheckNode(child, depth + 1)) return true
+                    if (quickCheckNode(child, depth + 1, maxDepth)) return true
                 } finally {
                     child.recycle()
                 }

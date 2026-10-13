@@ -55,7 +55,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.florisboard.lib.kotlin.collectIn
 import org.k3lp.lib.text.K3Descriptor
@@ -130,8 +129,10 @@ class ImeController(
         }
 
         // TODO proper stateful compilation
-        scope.launch {
-            loadFoundationKeyboard(this@ImeController, storageController.activeStorage.value)
+        // asFlow() is a StateFlow: the current layout value fires immediately (initial
+        // load) and every subsequent preference change recompiles the keyboard live.
+        prefs.keyboard.layout.asFlow().collectIn(scope) { layout ->
+            loadFoundationKeyboard(this@ImeController, storageController.activeStorage.value, layout)
         }
     }
 

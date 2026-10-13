@@ -12,7 +12,6 @@ class PanicSettingsCodecTest : FunSpec({
         s.panicTriggerShake shouldBe true
         s.panicTriggerFaceDown shouldBe false
         s.panicTriggerSpacebar shouldBe false
-        s.panicTriggerVolumeSequence shouldBe false
         s.panicActionSwitchIme shouldBe true
         s.panicActionRemoveOverlays shouldBe true
         s.panicActionClearCache shouldBe true
@@ -35,7 +34,6 @@ class PanicSettingsCodecTest : FunSpec({
         s.panicTriggerShake shouldBe false
         s.panicTriggerFaceDown shouldBe true
         s.panicTriggerSpacebar shouldBe false
-        s.panicTriggerVolumeSequence shouldBe false
         s.panicActionSwitchIme shouldBe false
         s.panicActionRemoveOverlays shouldBe false
         // Combined cache+lock toggle: ON if either legacy toggle wanted the effect.
@@ -61,7 +59,6 @@ class PanicSettingsCodecTest : FunSpec({
         s.panicTriggerShake shouldBe false
         s.panicTriggerFaceDown shouldBe false
         s.panicTriggerSpacebar shouldBe false
-        s.panicTriggerVolumeSequence shouldBe false
         s.panicEnabled shouldBe true
     }
 
@@ -84,7 +81,6 @@ class PanicSettingsCodecTest : FunSpec({
             panicTriggerShake = false,
             panicTriggerFaceDown = true,
             panicTriggerSpacebar = false,
-            panicTriggerVolumeSequence = true,
             panicActionSwitchIme = false,
             panicActionRemoveOverlays = false,
             panicActionClearCache = false,
