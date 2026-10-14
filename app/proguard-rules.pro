@@ -33,3 +33,15 @@
 # See CryptoBarHook.initialize() for the full list of reflective lookups.
 -keep class com.mkcreations.cryptokeyboard.** { *; }
 -keepclassmembers class com.mkcreations.cryptokeyboard.** { *; }
+
+# ML Kit resolves its internal components via reflection (firebase-components DI:
+# the manifest registers BarcodeRegistrar/VisionCommonRegistrar/CommonComponentRegistrar
+# and they are instantiated by Class.forName + newInstance; LazyInstanceMap factories
+# are looked up reflectively too). R8 full mode (default with AGP 9) strips their
+# constructors and the BarcodeScanning entry class, which NPEs the moment the QR
+# scanner calls BarcodeScanning.getClient(). Known issue: keep the whole ML Kit
+# surface plus registrar constructors.
+# See https://github.com/googlesamples/mlkit/issues/1018
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_** { *; }
+-keep class * implements com.google.firebase.components.ComponentRegistrar { void <init>(); }
